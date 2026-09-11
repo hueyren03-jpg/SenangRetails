@@ -1,0 +1,1726 @@
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.MaintainDocumentNumberService
+@inject IMaintainDocumentNumberService DocNumberService
+@inject IJSRuntime JS
+
+<div class="section-container">
+    <div class="section-header">
+        <div class="header-left">
+            <h2>Maintain Document Number</h2>
+            <p>Configure auto-sequence document prefixes, padding lengths, and running numbers.</p>
+        </div>
+        <div class="header-right">
+            <button class="add-btn" @onclick="SaveDocumentNumbers" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Save All Changes</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <div class="point-section">
+        <div class="section-title-row-with-action">
+            <h3>Document Sequences</h3>
+            <span class="rule-count-text">@documentRules.Count(r => r.Category == activeCategory) rule(s)</span>
+        </div>
+
+        @if (!string.IsNullOrEmpty(alertMessage))
+        {
+            <div class="bc-alert @(isSuccess ? "success" : "error")" style="margin-bottom: 1.25rem;">
+                <i class="fa-solid @(isSuccess ? "fa-circle-check" : "fa-circle-exclamation")"></i>
+                <span>@alertMessage</span>
+            </div>
+        }
+
+        <!-- Primary Category Tabs -->
+        <div class="touch-pill-group" style="margin-bottom: 16px; max-width: 500px;">
+            <button type="button"
+                    class="touch-pill @(activeCategory == "Document" ? "active" : "")"
+                    @onclick='() => SwitchCategory("Document")'>
+                <i class="fa-solid fa-file-invoice"></i>
+                <span>Documents &amp; Sales</span>
+                <span style="font-size: 0.75rem; opacity: 0.8;">(@documentRules.Count(r => r.Category == "Document"))</span>
+            </button>
+            <button type="button"
+                    class="touch-pill @(activeCategory == "Account" ? "active" : "")"
+                    @onclick='() => SwitchCategory("Account")'>
+                <i class="fa-solid fa-address-book"></i>
+                <span>Accounts &amp; Master</span>
+                <span style="font-size: 0.75rem; opacity: 0.8;">(@documentRules.Count(r => r.Category == "Account"))</span>
+            </button>
+        </div>
+
+        <!-- Search Bar and Subfilters -->
+        <div class="search-toolbar-row" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div class="staff-search-wrap">
+                <i class="fa-solid fa-magnifying-glass staff-search-icon"></i>
+                <input type="text"
+                       class="staff-search-input"
+                       placeholder="Search name, code or prefix..."
+                       @bind="searchQuery"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <button class="search-clear-btn" @onclick='() => searchQuery = ""'>✕</button>
+                }
+            </div>
+
+            @if (activeCategory == "Document")
+            {
+                <div class="mdn-subfilter-chips" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="mdn-subchip @(subFilter == "ALL" ? "active" : "")" @onclick='() => subFilter = "ALL"'>All</button>
+                    <button type="button" class="mdn-subchip @(subFilter == "SALES" ? "active" : "")" @onclick='() => subFilter = "SALES"'>Sales</button>
+                    <button type="button" class="mdn-subchip @(subFilter == "INVENTORY" ? "active" : "")" @onclick='() => subFilter = "INVENTORY"'>Stock</button>
+                    <button type="button" class="mdn-subchip @(subFilter == "PURCHASE" ? "active" : "")" @onclick='() => subFilter = "PURCHASE"'>Purchase</button>
+                    <button type="button" class="mdn-subchip @(subFilter == "FINANCE" ? "active" : "")" @onclick='() => subFilter = "FINANCE"'>Finance</button>
+                </div>
+            }
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="empty-state">Loading document number sequence rules...</div>
+        }
+        else if (!FilteredRules.Any())
+        {
+            <div class="empty-state">No document sequence rules matched your current search filters.</div>
+        }
+        else
+        {
+            <div class="list-container">
+                <div class="list-header">
+                    <span class="align-left">Document / Account Name</span>
+                    <span class="align-left">Prefix</span>
+                    <span class="align-center">Total Length</span>
+                    <span class="align-center">Last Number</span>
+                    <span class="align-center">Formatted Preview</span>
+                    <span class="align-center">Actions</span>
+                </div>
+                @foreach (var rule in FilteredRules)
+                {
+                    var iconClass = GetDocumentIcon(rule.Name, rule.Category);
+                    var colorTheme = GetDocumentTheme(rule.Name, rule.Category);
+
+                    <div class="list-item">
+                        <span class="cell-main align-left" data-label="Document Name">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="mdn-table-icon-avatar @colorTheme">
+                                    <i class="fa-solid @iconClass"></i>
+                                </div>
+                                <div>
+                                    <span class="mdn-document-name">@FormatDisplayName(rule.Name)</span>
+                                    <span class="mdn-id-chip">#@rule.DocType</span>
+                                </div>
+                            </div>
+                        </span>
+                        <span class="cell align-left" data-label="Prefix">
+                            <input type="text"
+                                   class="staff-search-input"
+                                   style="max-width: 90px; padding: 6px 8px; text-transform: uppercase; font-family: monospace; font-weight: 400;"
+                                   placeholder="None"
+                                   maxlength="10"
+                                   @bind="rule.Prefix" />
+                        </span>
+                        <span class="cell align-center" data-label="Total Length">
+                            <button type="button" class="touch-num-box" @onclick='() => OpenKeypad(rule, "CharacterCount", rule.CharacterCount)'>
+                                <span>@rule.CharacterCount Digits</span>
+                                <i class="fa-solid fa-calculator" style="color: #94A3B8; font-size: 0.8rem; margin-left: 5px;"></i>
+                            </button>
+                        </span>
+                        <span class="cell align-center" data-label="Last Number">
+                            <button type="button" class="touch-num-box" @onclick='() => OpenKeypad(rule, "LastNumberUsed", rule.LastNumberUsed)'>
+                                <span># @rule.LastNumberUsed</span>
+                                <i class="fa-solid fa-calculator" style="color: #94A3B8; font-size: 0.8rem; margin-left: 5px;"></i>
+                            </button>
+                        </span>
+                        <span class="cell align-center" data-label="Formatted Preview">
+                            <span class="preview-badge">
+                                <i class="fa-solid fa-eye" style="margin-right: 4px; color: #888;"></i>
+                                @rule.GetFormattedPreview()
+                            </span>
+                        </span>
+                        <span class="cell align-center" data-label="Actions">
+                            <button class="pt-action-btn" title="Configure" @onclick="() => OpenConfigureModal(rule)">
+                                <i class="fa-solid fa-sliders"></i>
+                            </button>
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- CONFIGURE DOCUMENT NUMBER MODAL (POINT SETUP STYLE) -->
+@if (showConfigureModal && selectedRuleForModal != null)
+{
+    <div class="modal-overlay" @onclick="CancelConfigureModal">
+        <div class="modal-box" style="width: 520px; max-width: 95%;" @onclick:stopPropagation>
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h3 class="modal-title">Edit @FormatDisplayName(selectedRuleForModal.Name)</h3>
+                <button type="button" class="close-btn" @onclick="CancelConfigureModal" aria-label="Close">✕</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Clean Live Formatted Sequence Preview -->
+                <div class="mdn-preview-box">
+                    <div class="mdn-preview-sub">Current Sequence Preview</div>
+                    <div class="mdn-preview-num">@selectedRuleForModal.GetFormattedPreview()</div>
+                    <div class="mdn-preview-next">
+                        <span>Next: <strong>@GetNextSequencePreview(selectedRuleForModal)</strong></span>
+                    </div>
+                </div>
+
+                <!-- Prefix Text -->
+                <div class="form-group">
+                    <label class="form-label">Prefix Text</label>
+                    <input type="text"
+                           class="form-control text-uppercase"
+                           placeholder="e.g. CS, INV, SO, PO (optional)"
+                           maxlength="10"
+                           @bind="selectedRuleForModal.Prefix"
+                           @bind:event="oninput" />
+                    <span class="field-sub-hint">Leave blank if no prefix is required (e.g. pure numbers).</span>
+                </div>
+
+                <!-- Total Characters Length -->
+                <div class="form-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="margin: 0;">Total Characters Length</label>
+                        <span style="font-size: 12px; color: #888;">
+                            Padding: @Math.Max(1, selectedRuleForModal.CharacterCount - selectedRuleForModal.Prefix.Length) zeros
+                        </span>
+                    </div>
+                    <div class="ps-input-with-action">
+                        <input type="number"
+                               min="2"
+                               max="30"
+                               class="form-control"
+                               @bind="selectedRuleForModal.CharacterCount" />
+                        <button type="button"
+                                class="input-keypad-btn"
+                                title="Open touch keypad"
+                                @onclick='() => OpenKeypad(selectedRuleForModal, "CharacterCount", selectedRuleForModal.CharacterCount)'>
+                            <i class="fa-solid fa-calculator"></i>
+                        </button>
+                    </div>
+
+                    <!-- Quick Length Presets -->
+                    <div class="mdn-pill-row">
+                        @foreach (var len in new[] { 6, 8, 10, 12, 15, 20 })
+                        {
+                            <button type="button"
+                                    class="mdn-pill-btn @(selectedRuleForModal.CharacterCount == len ? "active" : "")"
+                                    @onclick="() => selectedRuleForModal.CharacterCount = len">
+                                @len Digits
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <!-- Last Number Used (Running Number Counter) -->
+                <div class="form-group">
+                    <label class="form-label">Last Number Used (Counter)</label>
+                    <div class="ps-input-with-action">
+                        <input type="number"
+                               min="0"
+                               class="form-control"
+                               @bind="selectedRuleForModal.LastNumberUsed" />
+                        <button type="button"
+                                class="input-keypad-btn"
+                                title="Open touch keypad"
+                                @onclick='() => OpenKeypad(selectedRuleForModal, "LastNumberUsed", selectedRuleForModal.LastNumberUsed)'>
+                            <i class="fa-solid fa-calculator"></i>
+                        </button>
+                    </div>
+
+                    <!-- Counter Quick Adjustments -->
+                    <div class="mdn-pill-row">
+                        <button type="button" class="mdn-pill-btn" @onclick="() => selectedRuleForModal.LastNumberUsed = 0">
+                            Reset to 0
+                        </button>
+                        <button type="button" class="mdn-pill-btn" @onclick="() => selectedRuleForModal.LastNumberUsed = 1">
+                            Reset to 1
+                        </button>
+                        <button type="button" class="mdn-pill-btn" @onclick="() => StepRunningNumber(selectedRuleForModal, 10)">
+                            +10 Jump
+                        </button>
+                        <button type="button" class="mdn-pill-btn" @onclick="() => StepRunningNumber(selectedRuleForModal, 100)">
+                            +100 Jump
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Upcoming Sequence Samples -->
+                <div class="form-group">
+                    <label class="form-label">Upcoming Sequence Numbers</label>
+                    <div class="mdn-samples-grid">
+                        @for (int i = 1; i <= 3; i++)
+                        {
+                            var offset = i;
+                            <div class="mdn-sample-card">
+                                <span class="mdn-sample-offset">+#@offset</span>
+                                <span class="mdn-sample-val">@GetSampleFormatted(selectedRuleForModal, selectedRuleForModal.LastNumberUsed + offset)</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer (Matching Staff & Point Setup style) -->
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" @onclick="CancelConfigureModal">Cancel</button>
+                <button type="button" class="btn-save" @onclick="SaveConfigureModal" disabled="@isSaving">
+                    @(isSaving ? "Saving..." : "Save")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+
+<!-- TOUCH CALCULATOR KEYPAD MODAL -->
+@if (showKeypad)
+{
+    <div class="modal-overlay" @onclick="CloseKeypad">
+        <div class="touch-keypad-modal" @onclick:stopPropagation>
+            <div class="keypad-header">
+                <span class="keypad-title">Enter @keypadTitle</span>
+                <span class="keypad-display"># @keypadValueString</span>
+            </div>
+            <div class="keypad-grid">
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("7")'>7</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("8")'>8</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("9")'>9</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadClear">CE</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("4")'>4</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("5")'>5</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("6")'>6</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadBackspace">⌫</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("1")'>1</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("2")'>2</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("3")'>3</button>
+                <button type="button" class="kp-btn kp-cancel" @onclick="CloseKeypad">Cancel</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("0")'>0</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("00")'>00</button>
+                <button type="button" class="kp-btn" disabled>.</button>
+                <button type="button" class="kp-btn kp-submit" @onclick="KeypadSave">OK</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* ══════════════════════════════════════════════════
+       POINT SETUP PAGE UI STYLING
+       ══════════════════════════════════════════════════ */
+    .section-container {
+        padding: 20px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 0.875rem; /* 14px base */
+        padding: clamp(0px, 4vw, 18px) clamp(16px, 4vw, 34px);
+    }
+
+    .section-header {
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-left h2 {
+        font-size: 1.25rem; /* 20px */
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .header-left p {
+        color: #888;
+        font-size: 0.875rem; /* 14px */
+        margin: 5px 0 0;
+    }
+
+    .header-right {
+        flex-shrink: 0;
+    }
+
+    .point-section {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+    }
+
+    .section-title-row-with-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+    }
+
+    .section-title-row-with-action h3 {
+        font-size: 1rem; /* 16px */
+        font-weight: 600;
+        color: #222;
+        margin: 0;
+    }
+
+    .rule-count-text {
+        font-size: 0.8125rem;
+        color: #888;
+    }
+
+    .add-btn {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 8px;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .add-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        opacity: 0.95;
+    }
+
+    .add-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .search-toolbar-row {
+        margin-bottom: 18px;
+    }
+
+    .staff-search-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 420px;
+    }
+
+    .staff-search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #888;
+        font-size: 14px;
+    }
+
+    .staff-search-input {
+        width: 100%;
+        padding: 9px 36px 9px 34px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 13.5px;
+        font-family: inherit;
+        background: white;
+        box-sizing: border-box;
+    }
+
+    .staff-search-input:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .search-clear-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .empty-state {
+        font-size: 0.75rem; /* 12px */
+        color: #bbb;
+        padding: 20px 0;
+        text-align: center;
+    }
+
+    /* List table - Desktop view */
+    .list-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .list-header {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr 1.6fr 0.8fr;
+        padding: 12px 0;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 400;
+        color: #333;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .list-item {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr 1.6fr 0.8fr;
+        padding: 16px 0;
+        background: white;
+        border-bottom: 1px solid #eee;
+        align-items: center;
+        transition: background 0.15s;
+    }
+
+    .list-item:hover {
+        background-color: #fafafa;
+    }
+
+    .cell-main {
+        font-weight: 400;
+        color: #333;
+    }
+
+    .mdn-document-name {
+        color: #222;
+        font-weight: 400;
+    }
+
+    .cell {
+        color: #555;
+        font-weight: 400;
+    }
+
+    .align-left { text-align: left; }
+    .align-center { text-align: center; }
+    .align-right { text-align: right; }
+
+    /* Action buttons */
+    .pt-action-btn {
+        background: transparent;
+        border: none;
+        color: #64748B;
+        cursor: pointer;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        transition: all 0.15s;
+    }
+
+    .pt-action-btn:hover {
+        background: #F1F5F9;
+        color: var(--color-primary, #F2600C);
+    }
+
+    .bc-alert {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    .bc-alert.success {
+        background: #F0FDF4;
+        border: 1px solid #BBF7D0;
+        color: #166534;
+    }
+
+    .bc-alert.error {
+        background: #FEF2F2;
+        border: 1px solid #FECACA;
+        color: #991B1B;
+    }
+
+    /* Subfilter Chips */
+    .mdn-subchip {
+        padding: 6px 14px;
+        border-radius: 20px;
+        border: 1px solid #ddd;
+        background: white;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: #555;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .mdn-subchip.active {
+        background: #FFF7ED;
+        border-color: var(--color-primary, #F2600C);
+        color: var(--color-primary, #F2600C);
+        font-weight: 600;
+    }
+
+    .touch-pill-group {
+        display: flex;
+        gap: 8px;
+    }
+
+    .touch-pill {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 9px 14px;
+        border-radius: 8px;
+        border: 1px solid #CBD5E1;
+        background: white;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .touch-pill.active {
+        background: #FFF7ED;
+        border-color: var(--color-primary, #F2600C);
+        color: var(--color-primary, #F2600C);
+        font-weight: 600;
+    }
+
+    /* Number box buttons */
+    .touch-num-box {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 5px 10px;
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 400;
+        color: #1E293B;
+        transition: all 0.15s;
+    }
+
+    .touch-num-box:hover {
+        background: #FFF7ED;
+        border-color: var(--color-primary, #F2600C);
+        color: var(--color-primary, #F2600C);
+    }
+
+    .preview-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        background: #F1F5F9;
+        border: 1px solid #E2E8F0;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 0.85rem;
+        font-weight: 400;
+        color: #0F172A;
+    }
+
+    /* Avatars */
+    .mdn-table-icon-avatar {
+        width: 18px;
+        height: 18px;
+        border-radius: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+    }
+    .mdn-table-icon-avatar.sales,
+    .mdn-table-icon-avatar.inventory,
+    .mdn-table-icon-avatar.purchase,
+    .mdn-table-icon-avatar.finance,
+    .mdn-table-icon-avatar.account,
+    .mdn-table-icon-avatar.default {
+        background: transparent;
+        color: #64748B;
+    }
+
+    .mdn-id-chip {
+        margin-left: 6px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #64748B;
+        box-shadow: none;
+        font-size: 0.75rem;
+        font-weight: 400;
+    }
+
+    /* ══════════════════════════════════════════════════
+       MODAL STYLING
+       ══════════════════════════════════════════════════ */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
+    }
+
+    .modal-container {
+        background: white;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 600px;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        overflow: hidden;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #eee;
+        background: #FAFAFA;
+    }
+
+    .mdn-modal-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .mdn-modal-icon-badge {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+    .mdn-modal-icon-badge.sales { background: #EFF6FF; color: #2563EB; }
+    .mdn-modal-icon-badge.inventory { background: #ECFDF5; color: #059669; }
+    .mdn-modal-icon-badge.purchase { background: #FFFBEB; color: #D97706; }
+    .mdn-modal-icon-badge.finance { background: #FAF5FF; color: #9333EA; }
+    .mdn-modal-icon-badge.account { background: #F0FDF4; color: #16A34A; }
+    .mdn-modal-icon-badge.default { background: #F1F5F9; color: #64748B; }
+
+    .mdn-modal-title {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1E293B;
+    }
+
+    .mdn-modal-sub {
+        font-size: 0.8rem;
+        color: #64748B;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        color: #94A3B8;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+
+    .close-btn:hover {
+        background: #F1F5F9;
+        color: #334155;
+    }
+
+    .modal-body {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    /* Live Simulator Hero Card */
+    .mdn-sim-hero-card {
+        background: #0F172A;
+        border-radius: 12px;
+        padding: 16px;
+        color: white;
+    }
+
+    .mdn-sim-hero-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.75rem;
+        color: #94A3B8;
+        margin-bottom: 10px;
+    }
+
+    .mdn-sim-display {
+        font-family: monospace;
+        font-size: 1.35rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #38BDF8;
+    }
+
+    .mdn-sec-box {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .mdn-sec-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #E2E8F0;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .form-label {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+        background: white;
+        font-family: inherit;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .text-uppercase { text-transform: uppercase; }
+    .text-mono { font-family: monospace; }
+
+    .mdn-field-hint {
+        font-size: 0.75rem;
+        color: #64748B;
+    }
+
+    .mdn-flex-between {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .mdn-calc-hint {
+        font-size: 0.75rem;
+        color: #64748B;
+    }
+
+    .mdn-preset-chips {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 6px;
+    }
+
+    .mdn-preset-btn {
+        padding: 4px 10px;
+        border-radius: 6px;
+        border: 1px solid #CBD5E1;
+        background: white;
+        font-size: 0.78rem;
+        cursor: pointer;
+    }
+
+    .mdn-preset-btn.active {
+        background: #FFF7ED;
+        border-color: var(--color-primary, #F2600C);
+        color: var(--color-primary, #F2600C);
+        font-weight: 600;
+    }
+
+    .mdn-modal-stepper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .mdn-modal-step-btn {
+        width: 36px;
+        height: 36px;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .mdn-modal-step-display {
+        flex: 1;
+        background: white;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        padding: 6px 12px;
+        text-align: center;
+        cursor: pointer;
+    }
+
+    .mdn-modal-step-num {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #1E293B;
+    }
+
+    .mdn-modal-step-sub {
+        display: block;
+        font-size: 0.7rem;
+        color: #64748B;
+    }
+
+    .mdn-running-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: white;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        padding: 10px 14px;
+        cursor: pointer;
+    }
+
+    .mdn-running-card-title {
+        font-size: 0.75rem;
+        color: #64748B;
+        display: block;
+    }
+
+    .mdn-running-card-num {
+        font-weight: 700;
+        font-size: 1.2rem;
+        color: #1E293B;
+        font-family: monospace;
+    }
+
+    .mdn-keypad-trigger-badge {
+        font-size: 0.78rem;
+        color: var(--color-primary, #F2600C);
+        font-weight: 600;
+    }
+
+    .mdn-counter-quick-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+    }
+
+    .mdn-quick-act-btn {
+        flex: 1;
+        padding: 4px 8px;
+        border: 1px solid #CBD5E1;
+        border-radius: 6px;
+        background: white;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+
+    .mdn-sample-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+    }
+
+    .mdn-sample-item {
+        background: white;
+        border: 1px solid #E2E8F0;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 0.78rem;
+        font-family: monospace;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .mdn-sample-idx { color: #888; }
+    .mdn-sample-val { font-weight: 600; color: #1E293B; }
+
+    .prod-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 20px;
+        border-top: 1px solid #eee;
+        background: #FAFAFA;
+    }
+
+    .prod-modal-cancel-btn {
+        padding: 9px 18px;
+        border-radius: 8px;
+        border: 1px solid #CBD5E1;
+        background: white;
+        color: #475569;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+    }
+
+    /* Keypad Modal */
+    .touch-keypad-modal {
+        background: white;
+        border-radius: 16px;
+        width: 320px;
+        padding: 16px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+    }
+    .keypad-header {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 14px;
+        background: #F8FAFC;
+        padding: 12px;
+        border-radius: 10px;
+        text-align: right;
+    }
+    .keypad-title { font-size: 0.75rem; color: #64748B; text-align: left; }
+    .keypad-display { font-size: 1.5rem; font-weight: 700; font-family: monospace; color: #0F172A; }
+    .keypad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .kp-btn {
+        padding: 14px 0;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        background: white;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.1s;
+    }
+    .kp-btn:hover { background: #F1F5F9; }
+    .kp-action { background: #F1F5F9; color: #475569; }
+    .kp-cancel { background: #FEE2E2; color: #DC2626; font-size: 0.85rem; }
+    .kp-submit { background: var(--color-primary, #F2600C); color: white; font-size: 0.95rem; }
+
+    /* ══════════════════════════════════════════════════
+       RESPONSIVE MOBILE CARDS
+       ══════════════════════════════════════════════════ */
+    @@media (max-width: 768px) {
+        .section-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .header-right {
+            width: 100%;
+        }
+
+        .header-right .add-btn {
+            width: 100%;
+            text-align: center;
+            padding: 12px;
+            justify-content: center;
+        }
+
+        .point-section {
+            padding: 15px;
+        }
+
+        .list-header {
+            display: none;
+        }
+
+        .list-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            background: #FAFAFA;
+        }
+
+        .cell, .cell-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            text-align: right !important;
+            font-size: 0.8125rem;
+        }
+
+        .cell::before, .cell-main::before {
+            content: attr(data-label);
+            font-weight: 400;
+            color: #888;
+            text-align: left;
+            padding-right: 10px;
+        }
+
+        .cell[data-label="Actions"] {
+            justify-content: flex-end;
+            padding-top: 8px;
+            border-top: 1px dashed #eee;
+        }
+
+        .cell[data-label="Actions"]::before {
+            display: none;
+        }
+    }
+
+    /* ========================================================================= */
+    /* CLEAN DOCUMENT NUMBER MODAL STYLING (MATCHING POINT & STAFF SETUP)        */
+    /* ========================================================================= */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1050;
+        padding: 16px;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 16px;
+        width: 520px;
+        max-width: 95%;
+        max-height: 90vh;
+        max-height: 90dvh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .modal-header {
+        padding: 20px 24px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 20px;
+        color: #888;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+        line-height: 1;
+        transition: 0.15s;
+    }
+
+    .close-btn:hover {
+        background: #f0f0f0;
+        color: #111;
+    }
+
+    .modal-body {
+        padding: 20px 24px;
+        overflow-y: auto;
+        flex: 1;
+        box-sizing: border-box;
+    }
+
+    .modal-footer {
+        padding: 16px 24px;
+        display: flex;
+        gap: 12px;
+        border-top: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .btn-cancel {
+        flex: 1;
+        padding: 13px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: white;
+        font-size: 15px;
+        font-weight: 600;
+        color: #444;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-cancel:hover {
+        background: #f5f5f5;
+    }
+
+    .btn-save {
+        flex: 1;
+        padding: 13px;
+        border: none;
+        border-radius: 10px;
+        background-color: var(--color-primary, #F2600C);
+        color: white;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-save:hover {
+        opacity: 0.88;
+    }
+
+    .btn-save:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Form controls */
+    .form-group {
+        margin-bottom: 18px;
+    }
+
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+    }
+
+    .required {
+        color: var(--color-primary, #F2600C);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        font-size: 14px;
+        font-family: inherit;
+        box-sizing: border-box;
+        color: #222;
+        transition: border-color 0.2s;
+        background: white;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .field-sub-hint {
+        display: block;
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+    }
+
+    /* Input with Keypad button */
+    .ps-input-with-action {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 100%;
+    }
+
+    .ps-input-with-action .form-control {
+        padding-right: 46px;
+    }
+
+    .input-keypad-btn {
+        position: absolute;
+        right: 8px;
+        background: #f5f5f5;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .input-keypad-btn:hover {
+        background: #eee;
+        color: var(--color-primary, #F2600C);
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    /* Preview Card */
+    .mdn-preview-box {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 14px 18px;
+        margin-bottom: 18px;
+        text-align: center;
+    }
+
+    .mdn-preview-sub {
+        font-size: 11px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .mdn-preview-num {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--color-primary, #F2600C);
+        font-family: monospace;
+        margin: 6px 0;
+        letter-spacing: 0.04em;
+    }
+
+    .mdn-preview-next {
+        font-size: 12px;
+        color: #64748B;
+    }
+
+    /* Pill Buttons */
+    .mdn-pill-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+    }
+
+    .mdn-pill-btn {
+        padding: 5px 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        background: white;
+        font-size: 12px;
+        font-weight: 600;
+        color: #555;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .mdn-pill-btn:hover {
+        background: #f5f5f5;
+        border-color: #ccc;
+    }
+
+    .mdn-pill-btn.active {
+        background: #FFF7ED;
+        border-color: var(--color-primary, #F2600C);
+        color: var(--color-primary, #F2600C);
+    }
+
+    /* Samples Grid */
+    .mdn-samples-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+
+    .mdn-sample-card {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        text-align: center;
+    }
+
+    .mdn-sample-offset {
+        font-size: 10px;
+        font-weight: 700;
+        color: #888;
+        display: block;
+        margin-bottom: 2px;
+    }
+
+    .mdn-sample-val {
+        font-size: 12px;
+        font-weight: 600;
+        color: #333;
+        font-family: monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+    }
+
+</style>
+
+
+<RetailSetupPageStyle />
+
+@code {
+    private List<MaintainDocumentNumberModel> documentRules = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string activeCategory = "Document";
+    private string subFilter = "ALL";
+    private string searchQuery = "";
+    private string alertMessage = "";
+    private bool isSuccess = true;
+    private MaintainDocumentNumberModel? expandedMobileRule;
+
+    // Detailed Modal State
+    private bool showConfigureModal = false;
+    private MaintainDocumentNumberModel? selectedRuleForModal;
+
+    // Keypad State
+    private bool showKeypad = false;
+    private string keypadTitle = "";
+    private string keypadField = "";
+    private string keypadValueString = "0";
+    private MaintainDocumentNumberModel? activeRuleForKeypad;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDocumentNumbers();
+    }
+
+    private async Task LoadDocumentNumbers()
+    {
+        isLoading = true;
+        try
+        {
+            documentRules = await DocNumberService.GetDocumentNumbersAsync();
+            expandedMobileRule = documentRules.FirstOrDefault(r => r.Category == activeCategory);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SwitchCategory(string category)
+    {
+        activeCategory = category;
+        subFilter = "ALL";
+        expandedMobileRule = documentRules.FirstOrDefault(r => r.Category == category);
+    }
+
+    private void ToggleMobileRule(MaintainDocumentNumberModel rule)
+    {
+        expandedMobileRule = expandedMobileRule == rule ? null : rule;
+    }
+
+    private IEnumerable<MaintainDocumentNumberModel> FilteredRules
+    {
+        get
+        {
+            var result = documentRules.Where(r => r.Category == activeCategory);
+
+            if (activeCategory == "Document" && subFilter != "ALL")
+            {
+                result = subFilter switch
+                {
+                    "SALES" => result.Where(r => r.Name.Contains("Sale", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Quotation", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Order", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("POS", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Credit Note", StringComparison.OrdinalIgnoreCase) ||
+                                                 r.Name.Contains("Debit Note", StringComparison.OrdinalIgnoreCase)),
+                    "INVENTORY" => result.Where(r => r.Name.Contains("Inventory", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("Stock", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("GRN", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("GIN", StringComparison.OrdinalIgnoreCase) ||
+                                                     r.Name.Contains("Adjustment", StringComparison.OrdinalIgnoreCase)),
+                    "PURCHASE" => result.Where(r => r.Name.Contains("Purchase", StringComparison.OrdinalIgnoreCase) ||
+                                                    r.Name.Contains("PO", StringComparison.OrdinalIgnoreCase) ||
+                                                    r.Name.Contains("Supplier", StringComparison.OrdinalIgnoreCase)),
+                    "FINANCE" => result.Where(r => r.Name.Contains("Cash", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Bank", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Deposit", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Transfer", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Journal", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Instalment", StringComparison.OrdinalIgnoreCase) ||
+                                                   r.Name.Contains("Point", StringComparison.OrdinalIgnoreCase)),
+                    _ => result
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                result = result.Where(r => (r.Name?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           (r.Prefix?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           r.DocType.ToString().Contains(searchQuery));
+            }
+
+            return result;
+        }
+    }
+
+    private string FormatDisplayName(string rawName)
+    {
+        if (string.IsNullOrWhiteSpace(rawName)) return "Document";
+
+        // Insert spaces before capital letters if CamelCase without spaces
+        if (!rawName.Contains(' '))
+        {
+            var spaced = System.Text.RegularExpressions.Regex.Replace(rawName, "([a-z])([A-Z])", "$1 $2");
+            return spaced;
+        }
+
+        return rawName;
+    }
+
+    private string GetDocumentIcon(string name, string category)
+    {
+        if (category == "Account")
+        {
+            if (name.Contains("Customer", StringComparison.OrdinalIgnoreCase)) return "fa-user-tag";
+            if (name.Contains("Employee", StringComparison.OrdinalIgnoreCase) || name.Contains("HR", StringComparison.OrdinalIgnoreCase)) return "fa-id-card-clip";
+            if (name.Contains("Creditor", StringComparison.OrdinalIgnoreCase) || name.Contains("Supplier", StringComparison.OrdinalIgnoreCase)) return "fa-truck-field";
+            if (name.Contains("Bank", StringComparison.OrdinalIgnoreCase)) return "fa-building-columns";
+            if (name.Contains("Inventory", StringComparison.OrdinalIgnoreCase) || name.Contains("Stock", StringComparison.OrdinalIgnoreCase)) return "fa-boxes-stacked";
+            if (name.Contains("Student", StringComparison.OrdinalIgnoreCase)) return "fa-graduation-cap";
+            return "fa-address-book";
+        }
+
+        // Document Categories
+        if (name.Contains("Quotation", StringComparison.OrdinalIgnoreCase)) return "fa-file-signature";
+        if (name.Contains("POS", StringComparison.OrdinalIgnoreCase) || name.Contains("Receipt", StringComparison.OrdinalIgnoreCase)) return "fa-receipt";
+        if (name.Contains("Invoice", StringComparison.OrdinalIgnoreCase)) return "fa-file-invoice-dollar";
+        if (name.Contains("SalesOrder", StringComparison.OrdinalIgnoreCase) || name.Contains("Sales Order", StringComparison.OrdinalIgnoreCase)) return "fa-cart-shopping";
+        if (name.Contains("Purchase", StringComparison.OrdinalIgnoreCase) || name.Contains("PO", StringComparison.OrdinalIgnoreCase)) return "fa-bag-shopping";
+        if (name.Contains("Credit Note", StringComparison.OrdinalIgnoreCase) || name.Contains("CN", StringComparison.OrdinalIgnoreCase)) return "fa-hand-holding-dollar";
+        if (name.Contains("Debit Note", StringComparison.OrdinalIgnoreCase) || name.Contains("DN", StringComparison.OrdinalIgnoreCase)) return "fa-money-bill-transfer";
+        if (name.Contains("Inventory", StringComparison.OrdinalIgnoreCase) || name.Contains("Adjustment", StringComparison.OrdinalIgnoreCase)) return "fa-box-archive";
+        if (name.Contains("Transfer", StringComparison.OrdinalIgnoreCase)) return "fa-dolly";
+        if (name.Contains("Point", StringComparison.OrdinalIgnoreCase) || name.Contains("Redemption", StringComparison.OrdinalIgnoreCase)) return "fa-coins";
+        if (name.Contains("Delivery", StringComparison.OrdinalIgnoreCase) || name.Contains("DO", StringComparison.OrdinalIgnoreCase)) return "fa-truck-fast";
+        if (name.Contains("Bank", StringComparison.OrdinalIgnoreCase) || name.Contains("Deposit", StringComparison.OrdinalIgnoreCase) || name.Contains("Fund", StringComparison.OrdinalIgnoreCase)) return "fa-vault";
+
+        return "fa-file-lines";
+    }
+
+    private string GetDocumentTheme(string name, string category)
+    {
+        if (category == "Account")
+        {
+            if (name.Contains("Customer", StringComparison.OrdinalIgnoreCase)) return "theme-purple";
+            if (name.Contains("Bank", StringComparison.OrdinalIgnoreCase)) return "theme-blue";
+            if (name.Contains("Inventory", StringComparison.OrdinalIgnoreCase)) return "theme-green";
+            return "theme-slate";
+        }
+
+        if (name.Contains("Invoice", StringComparison.OrdinalIgnoreCase) || name.Contains("POS", StringComparison.OrdinalIgnoreCase)) return "theme-orange";
+        if (name.Contains("Quotation", StringComparison.OrdinalIgnoreCase) || name.Contains("Order", StringComparison.OrdinalIgnoreCase)) return "theme-blue";
+        if (name.Contains("Credit Note", StringComparison.OrdinalIgnoreCase) || name.Contains("Deposit", StringComparison.OrdinalIgnoreCase)) return "theme-green";
+        if (name.Contains("Transfer", StringComparison.OrdinalIgnoreCase) || name.Contains("Adjustment", StringComparison.OrdinalIgnoreCase)) return "theme-purple";
+
+        return "theme-slate";
+    }
+
+    private string GetPaddedRunningNumber(MaintainDocumentNumberModel rule)
+    {
+        int padLength = Math.Max(1, rule.CharacterCount - rule.Prefix.Length);
+        return rule.LastNumberUsed.ToString().PadLeft(padLength, '0');
+    }
+
+    private string GetNextSequencePreview(MaintainDocumentNumberModel rule)
+    {
+        long nextNum = rule.LastNumberUsed + 1;
+        int padLength = Math.Max(1, rule.CharacterCount - rule.Prefix.Length);
+        string formattedNum = nextNum.ToString().PadLeft(padLength, '0');
+        return string.IsNullOrEmpty(rule.Prefix) ? formattedNum : $"{rule.Prefix}-{formattedNum}";
+    }
+
+    private string GetSampleFormatted(MaintainDocumentNumberModel rule, long num)
+    {
+        int padLength = Math.Max(1, rule.CharacterCount - rule.Prefix.Length);
+        string formattedNum = num.ToString().PadLeft(padLength, '0');
+        return string.IsNullOrEmpty(rule.Prefix) ? formattedNum : $"{rule.Prefix}-{formattedNum}";
+    }
+
+    private void StepDigits(MaintainDocumentNumberModel rule, int delta)
+    {
+        rule.CharacterCount = Math.Clamp(rule.CharacterCount + delta, 2, 30);
+    }
+
+    private void StepRunningNumber(MaintainDocumentNumberModel rule, int delta)
+    {
+        rule.LastNumberUsed = Math.Max(0, rule.LastNumberUsed + delta);
+    }
+
+    private string originalPrefix = "";
+    private int originalCharacterCount = 15;
+    private long originalLastNumberUsed = 1;
+
+    private void OpenConfigureModal(MaintainDocumentNumberModel rule)
+    {
+        selectedRuleForModal = rule;
+        originalPrefix = rule.Prefix;
+        originalCharacterCount = rule.CharacterCount;
+        originalLastNumberUsed = rule.LastNumberUsed;
+        showConfigureModal = true;
+    }
+
+    private void CloseConfigureModal()
+    {
+        CancelConfigureModal();
+    }
+
+    private void CancelConfigureModal()
+    {
+        if (selectedRuleForModal != null)
+        {
+            selectedRuleForModal.Prefix = originalPrefix;
+            selectedRuleForModal.CharacterCount = originalCharacterCount;
+            selectedRuleForModal.LastNumberUsed = originalLastNumberUsed;
+        }
+        showConfigureModal = false;
+        selectedRuleForModal = null;
+    }
+
+    private async Task SaveConfigureModal()
+    {
+        showConfigureModal = false;
+        selectedRuleForModal = null;
+        await SaveDocumentNumbers();
+    }
+
+    private async Task SaveDocumentNumbers()
+    {
+        isSaving = true;
+        alertMessage = "";
+        try
+        {
+            var success = await DocNumberService.SaveDocumentNumbersAsync(documentRules);
+            if (success)
+            {
+                isSuccess = true;
+                alertMessage = "Maintain Document Numbers saved successfully!";
+            }
+            else
+            {
+                isSuccess = false;
+                alertMessage = "Failed to save document numbers.";
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccess = false;
+            alertMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    // Touch Keypad Methods
+    private void OpenKeypad(MaintainDocumentNumberModel rule, string field, long currentVal)
+    {
+        activeRuleForKeypad = rule;
+        keypadField = field;
+        keypadTitle = field switch
+        {
+            "CharacterCount" => "Total Digits Length",
+            "LastNumberUsed" => "Running Number Counter",
+            _ => field
+        };
+        keypadValueString = currentVal.ToString();
+        showKeypad = true;
+    }
+
+    private void KeypadAppend(string val)
+    {
+        if (keypadValueString == "0")
+            keypadValueString = val;
+        else
+            keypadValueString += val;
+    }
+
+    private void KeypadClear() => keypadValueString = "0";
+
+    private void KeypadBackspace()
+    {
+        if (keypadValueString.Length > 1)
+            keypadValueString = keypadValueString.Substring(0, keypadValueString.Length - 1);
+        else
+            keypadValueString = "0";
+    }
+
+    private void KeypadSave()
+    {
+        if (activeRuleForKeypad != null && long.TryParse(keypadValueString, out var num))
+        {
+            if (keypadField == "CharacterCount") activeRuleForKeypad.CharacterCount = (int)Math.Clamp(num, 2, 30);
+            else if (keypadField == "LastNumberUsed") activeRuleForKeypad.LastNumberUsed = Math.Max(0, num);
+        }
+        showKeypad = false;
+    }
+
+    private void CloseKeypad() => showKeypad = false;
+}

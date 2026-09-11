@@ -1,0 +1,1633 @@
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.BarcodeSetupService
+@inject IBarcodeSetupService BarcodeService
+@inject IJSRuntime JS
+
+<div class="section-container">
+    <div class="section-header">
+        <div class="header-left">
+            <h2>Barcode Reading Setup</h2>
+            <p>Configure scanner parsing rules, embedded field lengths, and prefix formats.</p>
+        </div>
+        <div class="header-right">
+            <button class="add-btn" @onclick="OpenAddModal">+ Add</button>
+        </div>
+    </div>
+
+    <div class="point-section">
+        <div class="section-title-row-with-action">
+            <h3>Barcode Rules</h3>
+            <span class="rule-count-text">@FilteredRules.Count() rule(s)</span>
+        </div>
+
+        @if (!string.IsNullOrEmpty(alertMessage))
+        {
+            <div class="bc-alert @(isSuccess ? "success" : "error")" style="margin-bottom: 1.25rem;">
+                <i class="fa-solid @(isSuccess ? "fa-circle-check" : "fa-circle-exclamation")"></i>
+                <span>@alertMessage</span>
+            </div>
+        }
+
+        <!-- Search Bar -->
+        <div class="search-toolbar-row">
+            <div class="staff-search-wrap">
+                <i class="fa-solid fa-magnifying-glass staff-search-icon"></i>
+                <input type="text"
+                       class="staff-search-input"
+                       placeholder="Search prefix or barcode type..."
+                       @bind="searchQuery"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <button class="search-clear-btn" @onclick='() => searchQuery = ""'>✕</button>
+                }
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="empty-state">Loading barcode rules...</div>
+        }
+        else if (!FilteredRules.Any())
+        {
+            <div class="empty-state">No barcode rules configured yet.</div>
+        }
+        else
+        {
+            <div class="list-container">
+                <div class="list-header">
+                    <span class="align-left">Prefix</span>
+                    <span class="align-left">Barcode Type</span>
+                    <span class="align-center">Format</span>
+                    <span class="align-center">Item Code</span>
+                    <span class="align-center">Qty Length</span>
+                    <span class="align-center">Fixed Qty</span>
+                    <span class="align-center">Price / Dec</span>
+                    <span class="align-center">Checksum</span>
+                    <span class="align-center">Status</span>
+                    <span class="align-center">Actions</span>
+                </div>
+                @foreach (var rule in FilteredRules)
+                {
+                    <div class="list-item" @onclick="() => OpenEditModal(rule)">
+                        <span class="cell-main align-left" data-label="Prefix"><span class="bc-prefix-badge">@rule.Prefix</span></span>
+                        <span class="cell align-left" data-label="Barcode Type"><strong>@rule.BarcodeType</strong></span>
+                        <span class="cell align-center" data-label="Format">
+                            <span class="bc-format-pill">
+                                <i class="fa-solid @(rule.SelectionType == "QRCode" ? "fa-qrcode" : "fa-barcode")"></i>
+                                @rule.SelectionType
+                            </span>
+                        </span>
+                        <span class="cell align-center" data-label="Item Code">@rule.ItemCodeLength digits</span>
+                        <span class="cell align-center" data-label="Qty Length">@(rule.IsQuantityFixedAsOne ? "Fixed 1" : $"{rule.QuantityLength} digits")</span>
+                        <span class="cell align-center" data-label="Fixed Qty">
+                            @if (rule.IsQuantityFixedAsOne)
+                            {
+                                <span class="custom-tick-checkbox checked">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="custom-tick-checkbox"></span>
+                            }
+                        </span>
+                        <span class="cell align-center" data-label="Price / Dec">@(rule.PriceLength > 0 ? $"{rule.PriceLength}d (.{rule.DecimalPlace})" : "-")</span>
+                        <span class="cell align-center" data-label="Checksum">@(rule.ChecksumLength > 0 ? $"{rule.ChecksumLength}d" : "-")</span>
+                        <span class="cell align-center" data-label="Status">
+                            <span class="bc-status-pill @(rule.IsActive ? "active" : "inactive")">
+                                @(rule.IsActive ? "Active" : "Disabled")
+                            </span>
+                        </span>
+                        <span class="cell align-center" data-label="Actions" @onclick:stopPropagation="true">
+                            <button class="pt-action-btn" title="Edit" @onclick="() => OpenEditModal(rule)">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </button>
+                            <button class="pt-action-btn pt-delete-btn" title="Delete" @onclick="() => ConfirmDelete(rule)">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- TOUCH ADD / EDIT MODAL (POINT SETUP / STAFF STYLE) -->
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-box" style="width: 580px; max-width: 95%;" @onclick:stopPropagation>
+            <!-- STICKY MODAL HEADER -->
+            <div class="modal-header">
+                <h3 class="modal-title">@(isEditMode ? "Edit Barcode Rule" : "Add Barcode Rule")</h3>
+                <button type="button" class="close-btn" @onclick="CloseModal" aria-label="Close">✕</button>
+            </div>
+
+            <!-- MODAL BODY (SCROLLABLE & BOUNDED) -->
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="form-error">@errorMessage</div>
+                }
+
+                <!-- Section Tabs -->
+                <div class="staff-tab-bar" style="margin-bottom: 18px;">
+                    <button type="button"
+                            class="staff-tab @(activeTab == "RulePattern" ? "active" : "")"
+                            @onclick='() => activeTab = "RulePattern"'>
+                        Rule &amp; Lengths
+                    </button>
+                    <button type="button"
+                            class="staff-tab @(activeTab == "ScannerFlags" ? "active" : "")"
+                            @onclick='() => activeTab = "ScannerFlags"'>
+                        Scanner Flags
+                    </button>
+                </div>
+
+                @if (activeTab == "RulePattern")
+                {
+                    <!-- LIVE PARSING VISUAL SIMULATOR -->
+                    <div class="bc-live-preview-box">
+                        <div class="bc-preview-title">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>Live Barcode Parsing Preview</span>
+                        </div>
+                        <div class="bc-preview-strip">
+                            <span class="bc-p-seg pre" title="Prefix">@(string.IsNullOrEmpty(currentRule.Prefix) ? "21" : currentRule.Prefix)</span>
+                            <span class="bc-p-seg item" title="Item Code">@(new string('X', Math.Max(1, currentRule.ItemCodeLength)))</span>
+                            @if (!currentRule.IsQuantityFixedAsOne && currentRule.QuantityLength > 0)
+                            {
+                                <span class="bc-p-seg qty" title="Quantity">@(new string('Q', currentRule.QuantityLength))</span>
+                            }
+                            @if (currentRule.PriceLength > 0)
+                            {
+                                <span class="bc-p-seg price" title="Price">@(new string('P', currentRule.PriceLength))</span>
+                            }
+                            @if (currentRule.ChecksumLength > 0)
+                            {
+                                <span class="bc-p-seg chk" title="Checksum">@(new string('C', currentRule.ChecksumLength))</span>
+                            }
+                        </div>
+                        <div class="bc-preview-legend">
+                            <span class="leg-item"><span class="leg-dot pre"></span> Prefix (@(currentRule.Prefix?.Length ?? 2))</span>
+                            <span class="leg-item"><span class="leg-dot item"></span> Item (@currentRule.ItemCodeLength)</span>
+                            @if (!currentRule.IsQuantityFixedAsOne)
+                            {
+                                <span class="leg-item"><span class="leg-dot qty"></span> Qty (@currentRule.QuantityLength)</span>
+                            }
+                            <span class="leg-item"><span class="leg-dot price"></span> Price (@currentRule.PriceLength, .@currentRule.DecimalPlace)</span>
+                            @if (currentRule.ChecksumLength > 0)
+                            {
+                                <span class="leg-item"><span class="leg-dot chk"></span> Checksum (@currentRule.ChecksumLength)</span>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Prefix & Barcode Type side-by-side -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="form-group">
+                            <label class="form-label">Prefix (2 Chars) <span class="required">*</span></label>
+                            <input type="text"
+                                   maxlength="2"
+                                   class="form-control text-uppercase text-mono @(isEditMode ? "readonly" : "")"
+                                   placeholder="e.g. 21"
+                                   @bind="currentRule.Prefix"
+                                   disabled="@isEditMode" />
+                            @if (isEditMode)
+                            {
+                                <span class="field-sub-hint">Prefix is locked after creation.</span>
+                            }
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Barcode Type</label>
+                            <select class="form-control" @bind="currentRule.BarcodeType">
+                                <option value="BarCode">BarCode (Standard)</option>
+                                <option value="EAN-13">EAN-13 (Standard Retail)</option>
+                                <option value="Code-128">Code-128</option>
+                                <option value="UPC-A">UPC-A</option>
+                                <option value="Custom Embedded">Custom Embedded Barcode</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Format Selection (Barcode / QRCode) -->
+                    <div class="form-group">
+                        <label class="form-label">Format Selection</label>
+                        <div class="touch-pill-group">
+                            <button type="button"
+                                    class="touch-pill @(currentRule.SelectionType == "Barcode" ? "active" : "")"
+                                    @onclick='() => currentRule.SelectionType = "Barcode"'>
+                                <i class="fa-solid fa-barcode"></i> Barcode
+                            </button>
+                            <button type="button"
+                                    class="touch-pill @(currentRule.SelectionType == "QRCode" ? "active" : "")"
+                                    @onclick='() => currentRule.SelectionType = "QRCode"'>
+                                <i class="fa-solid fa-qrcode"></i> QRCode
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Item Code Length -->
+                    <div class="form-group">
+                        <label class="form-label">Item Code Length <span class="required">*</span></label>
+                        <div class="ps-input-with-action">
+                            <input type="number"
+                                   min="1"
+                                   max="20"
+                                   class="form-control"
+                                   @bind="currentRule.ItemCodeLength"
+                                   placeholder="5" />
+                            <button type="button"
+                                    class="input-keypad-btn"
+                                    title="Open touch keypad"
+                                    @onclick='() => OpenKeypad("ItemCodeLength", currentRule.ItemCodeLength, "Item Code Length")'>
+                                <i class="fa-solid fa-calculator"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quantity Mode & Length -->
+                    <div class="form-group">
+                        <label class="form-label">Quantity Mode</label>
+                        <div class="touch-pill-group">
+                            <button type="button"
+                                    class="touch-pill @(!currentRule.IsQuantityFixedAsOne ? "active" : "")"
+                                    @onclick="() => currentRule.IsQuantityFixedAsOne = false">
+                                <i class="fa-solid fa-arrow-down-9-1"></i> Extract Qty
+                            </button>
+                            <button type="button"
+                                    class="touch-pill @(currentRule.IsQuantityFixedAsOne ? "active" : "")"
+                                    @onclick="() => currentRule.IsQuantityFixedAsOne = true">
+                                <i class="fa-solid fa-1"></i> Fixed as 1
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (!currentRule.IsQuantityFixedAsOne)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Quantity Length (Digits) <span class="required">*</span></label>
+                            <div class="ps-input-with-action">
+                                <input type="number"
+                                       min="1"
+                                       max="10"
+                                       class="form-control"
+                                       @bind="currentRule.QuantityLength"
+                                       placeholder="5" />
+                                <button type="button"
+                                        class="input-keypad-btn"
+                                        title="Open touch keypad"
+                                        @onclick='() => OpenKeypad("QuantityLength", currentRule.QuantityLength, "Quantity Length")'>
+                                    <i class="fa-solid fa-calculator"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Price Length & Decimal Place side-by-side -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="form-group">
+                            <label class="form-label">Price Length (Digits)</label>
+                            <div class="ps-input-with-action">
+                                <input type="number"
+                                       min="0"
+                                       max="10"
+                                       class="form-control"
+                                       @bind="currentRule.PriceLength"
+                                       placeholder="5" />
+                                <button type="button"
+                                        class="input-keypad-btn"
+                                        title="Open touch keypad"
+                                        @onclick='() => OpenKeypad("PriceLength", currentRule.PriceLength, "Price Length")'>
+                                    <i class="fa-solid fa-calculator"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Decimal Places</label>
+                            <div class="ps-input-with-action">
+                                <input type="number"
+                                       min="0"
+                                       max="6"
+                                       class="form-control"
+                                       @bind="currentRule.DecimalPlace"
+                                       placeholder="2" />
+                                <button type="button"
+                                        class="input-keypad-btn"
+                                        title="Open touch keypad"
+                                        @onclick='() => OpenKeypad("DecimalPlace", currentRule.DecimalPlace, "Decimal Place")'>
+                                    <i class="fa-solid fa-calculator"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Checksum Length -->
+                    <div class="form-group">
+                        <label class="form-label">Checksum Length (Digits)</label>
+                        <div class="ps-input-with-action">
+                            <input type="number"
+                                   min="0"
+                                   max="5"
+                                   class="form-control"
+                                   @bind="currentRule.ChecksumLength"
+                                   placeholder="1" />
+                            <button type="button"
+                                    class="input-keypad-btn"
+                                    title="Open touch keypad"
+                                    @onclick='() => OpenKeypad("ChecksumLength", currentRule.ChecksumLength, "Checksum Length")'>
+                                <i class="fa-solid fa-calculator"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+                else if (activeTab == "ScannerFlags")
+                {
+                    <div class="bc-toggle-card @(currentRule.IsActive ? "checked" : "")"
+                         @onclick="() => currentRule.IsActive = !currentRule.IsActive">
+                        <div class="bc-toggle-left">
+                            <i class="fa-solid fa-power-off"></i>
+                            <div>
+                                <span class="bc-toggle-title">Active Rule</span>
+                                <span class="bc-toggle-desc">Enable this parsing rule for all active POS scanner operations.</span>
+                            </div>
+                        </div>
+                        <div class="custom-tick-checkbox @(currentRule.IsActive ? "checked" : "")" style="flex-shrink: 0;">
+                            @if (currentRule.IsActive)
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="bc-toggle-card @(currentRule.BarcodeIncludesPrefix ? "checked" : "")"
+                         @onclick="() => currentRule.BarcodeIncludesPrefix = !currentRule.BarcodeIncludesPrefix">
+                        <div class="bc-toggle-left">
+                            <i class="fa-solid fa-indent"></i>
+                            <div>
+                                <span class="bc-toggle-title">Barcode Includes Prefix</span>
+                                <span class="bc-toggle-desc">Include the 2-digit prefix when matching the item code in inventory.</span>
+                            </div>
+                        </div>
+                        <div class="custom-tick-checkbox @(currentRule.BarcodeIncludesPrefix ? "checked" : "")" style="flex-shrink: 0;">
+                            @if (currentRule.BarcodeIncludesPrefix)
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="bc-toggle-card @(currentRule.HasOverlappingBarcodeItem ? "checked" : "")"
+                         @onclick="() => currentRule.HasOverlappingBarcodeItem = !currentRule.HasOverlappingBarcodeItem">
+                        <div class="bc-toggle-left">
+                            <i class="fa-solid fa-clone"></i>
+                            <div>
+                                <span class="bc-toggle-title">Has Overlapping Barcode Item</span>
+                                <span class="bc-toggle-desc">Support items sharing overlapping sub-barcode series.</span>
+                            </div>
+                        </div>
+                        <div class="custom-tick-checkbox @(currentRule.HasOverlappingBarcodeItem ? "checked" : "")" style="flex-shrink: 0;">
+                            @if (currentRule.HasOverlappingBarcodeItem)
+                            {
+                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            }
+                        </div>
+                    </div>
+
+                    @if (isEditMode)
+                    {
+                        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #f0f0f0;">
+                            <button type="button" class="btn-delete-row" @onclick="() => ConfirmDelete(currentRule)">
+                                <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete Barcode Rule
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- MODAL FOOTER (MATCHING STAFF & POINT SETUP STYLE) -->
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" @onclick="CloseModal">Cancel</button>
+                <button type="button" class="btn-save" @onclick="SaveRule" disabled="@isSaving">
+                    @(isSaving ? "Saving..." : "Save")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- TOUCH CALCULATOR KEYPAD MODAL -->
+@if (showKeypad)
+{
+    <div class="modal-overlay" @onclick="CloseKeypad">
+        <div class="touch-keypad-modal" @onclick:stopPropagation>
+            <div class="keypad-header">
+                <span class="keypad-title">Enter @keypadTitle</span>
+                <span class="keypad-display">@keypadValueString</span>
+            </div>
+            <div class="keypad-grid">
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("7")'>7</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("8")'>8</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("9")'>9</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadClear">CE</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("4")'>4</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("5")'>5</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("6")'>6</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadBackspace">⌫</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("1")'>1</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("2")'>2</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("3")'>3</button>
+                <button type="button" class="kp-btn kp-cancel" @onclick="CloseKeypad">Cancel</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("0")'>0</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("00")'>00</button>
+                <button type="button" class="kp-btn" disabled>.</button>
+                <button type="button" class="kp-btn kp-submit" @onclick="KeypadSave">OK</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- DELETE CONFIRMATION MODAL -->
+@if (showDeleteModal && ruleToDelete != null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteModal = false">
+        <div class="modal-box" style="width: 440px; max-width: 95%;" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3 class="modal-title" style="color: #DC2626;">Confirm Deletion</h3>
+                <button type="button" class="close-btn" @onclick="() => showDeleteModal = false" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin: 0; font-size: 14px; color: #444; line-height: 1.5;">
+                    Are you sure you want to delete the barcode reading rule for prefix
+                    <strong style="color: #0F172A; font-family: monospace; font-size: 15px; background: #F1F5F9; padding: 2px 6px; border-radius: 4px;">@ruleToDelete.Prefix</strong>?
+                </p>
+                <span class="field-sub-hint" style="color: #888; margin-top: 8px;">This action cannot be undone.</span>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" @onclick="() => showDeleteModal = false">Cancel</button>
+                <button type="button" class="btn-save" style="background: #DC2626;" @onclick="ExecuteDelete">Delete Rule</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* ══════════════════════════════════════════════════
+       POINT SETUP PAGE UI STYLING
+       ══════════════════════════════════════════════════ */
+    .section-container {
+        padding: 20px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 0.875rem; /* 14px base */
+        padding: clamp(0px, 4vw, 18px) clamp(16px, 4vw, 34px);
+    }
+
+    .section-header {
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-left h2 {
+        font-size: 1.25rem; /* 20px */
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .header-left p {
+        color: #888;
+        font-size: 0.875rem; /* 14px */
+        margin: 5px 0 0;
+    }
+
+    .header-right {
+        flex-shrink: 0;
+    }
+
+    .point-section {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+    }
+
+    .section-title-row-with-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+    }
+
+    .section-title-row-with-action h3 {
+        font-size: 1rem; /* 16px */
+        font-weight: 600;
+        color: #222;
+        margin: 0;
+    }
+
+    .rule-count-text {
+        font-size: 0.8125rem;
+        color: #888;
+    }
+
+    .add-btn {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 8px;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .add-btn:hover {
+        transform: translateY(-1px);
+        opacity: 0.95;
+    }
+
+    .search-toolbar-row {
+        margin-bottom: 18px;
+    }
+
+    .staff-search-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 420px;
+    }
+
+    .staff-search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #888;
+        font-size: 14px;
+    }
+
+    .staff-search-input {
+        width: 100%;
+        padding: 9px 36px 9px 34px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 13.5px;
+        font-family: inherit;
+        background: white;
+        box-sizing: border-box;
+    }
+
+    .staff-search-input:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .search-clear-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .empty-state {
+        font-size: 0.75rem; /* 12px */
+        color: #bbb;
+        padding: 20px 0;
+        text-align: center;
+    }
+
+    /* List table - Desktop view */
+    .list-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .list-header {
+        display: grid;
+        grid-template-columns: 1fr 1.6fr 1fr 1fr 1fr 0.8fr 1.2fr 0.9fr 0.9fr 0.9fr;
+        padding: 12px 0;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 600;
+        color: #333;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .list-item {
+        display: grid;
+        grid-template-columns: 1fr 1.6fr 1fr 1fr 1fr 0.8fr 1.2fr 0.9fr 0.9fr 0.9fr;
+        padding: 16px 0;
+        background: white;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        align-items: center;
+        transition: background 0.15s;
+    }
+
+    .list-item:hover {
+        background-color: #fafafa;
+    }
+
+    .cell-main {
+        font-weight: 600;
+        color: #333;
+    }
+
+    .cell {
+        color: #555;
+    }
+
+    .align-left { text-align: left; }
+    .align-center { text-align: center; }
+    .align-right { text-align: right; }
+
+    @@media (min-width: 769px) {
+        .list-header > span.align-center,
+        .list-item > span.align-center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .list-header > span.align-left,
+        .list-item > span.align-left {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+    }
+
+    /* Checkbox styled like Point / Discount Setup */
+    .custom-tick-checkbox {
+        width: 18px;
+        height: 18px;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: white;
+        cursor: pointer;
+        vertical-align: middle;
+        box-sizing: border-box;
+        transition: all 0.15s ease;
+    }
+
+    .cell .custom-tick-checkbox {
+        margin: 0 auto;
+    }
+
+    .custom-tick-checkbox.checked {
+        background-color: var(--color-primary, #F2600C);
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .custom-tick-checkbox svg {
+        stroke: white;
+        stroke-width: 4;
+        width: 10px;
+        height: 10px;
+        display: block;
+    }
+
+    /* Action buttons */
+    .pt-action-btn {
+        background: transparent;
+        border: none;
+        color: #64748B;
+        cursor: pointer;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        transition: all 0.15s;
+    }
+
+    .pt-action-btn:hover {
+        background: #F1F5F9;
+        color: var(--color-primary, #F2600C);
+    }
+
+    .pt-delete-btn:hover {
+        background: #FEF2F2;
+        color: #DC2626;
+    }
+
+    /* Barcode-specific Badges & Pills */
+    .bc-prefix-badge {
+        display: inline-block;
+        padding: 0;
+        background: transparent;
+        color: #334155;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        font-weight: 700;
+        font-family: monospace;
+        font-size: 0.85rem;
+        letter-spacing: 0;
+    }
+
+    .bc-format-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px;
+        background: #F1F5F9;
+        color: #475569;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .bc-status-pill {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .bc-status-pill.active {
+        background: #DCFCE7;
+        color: #166534;
+    }
+
+    .bc-status-pill.inactive {
+        background: #F1F5F9;
+        color: #64748B;
+    }
+
+    .bc-alert {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    .bc-alert.success {
+        background: #F0FDF4;
+        border: 1px solid #BBF7D0;
+        color: #166534;
+    }
+
+    .bc-alert.error {
+        background: #FEF2F2;
+        border: 1px solid #FECACA;
+        color: #991B1B;
+    }
+
+    /* ══════════════════════════════════════════════════
+       MODAL STYLING
+       ══════════════════════════════════════════════════ */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
+    }
+
+    /* =========================================================================
+       CLEAN MODAL & FORM SYSTEM (POINT SETUP / STAFF STANDARDS)
+       ========================================================================= */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1050;
+        padding: 16px;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 16px;
+        width: 580px;
+        max-width: 95%;
+        max-height: 90vh;
+        max-height: 90dvh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .modal-header {
+        padding: 20px 24px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 20px;
+        color: #888;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+        line-height: 1;
+        transition: 0.15s;
+    }
+
+    .close-btn:hover {
+        background: #f0f0f0;
+        color: #111;
+    }
+
+    .modal-body {
+        padding: 20px 24px;
+        overflow-y: auto;
+        flex: 1;
+        box-sizing: border-box;
+    }
+
+    .modal-footer {
+        padding: 16px 24px;
+        display: flex;
+        gap: 12px;
+        border-top: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .btn-cancel {
+        flex: 1;
+        padding: 13px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: white;
+        font-size: 15px;
+        font-weight: 600;
+        color: #444;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-cancel:hover {
+        background: #f5f5f5;
+    }
+
+    .btn-save {
+        flex: 1;
+        padding: 13px;
+        border: none;
+        border-radius: 10px;
+        background-color: var(--color-primary, #F2600C);
+        color: white;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-save:hover {
+        opacity: 0.88;
+    }
+
+    .btn-save:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Form controls */
+    .form-group {
+        margin-bottom: 18px;
+    }
+
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+    }
+
+    .required {
+        color: var(--color-primary, #F2600C);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        font-size: 14px;
+        font-family: inherit;
+        box-sizing: border-box;
+        color: #222;
+        transition: border-color 0.2s;
+        background: white;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .form-control.readonly {
+        background: #f5f5f5;
+        color: #888;
+        cursor: not-allowed;
+    }
+
+    .field-sub-hint {
+        display: block;
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+    }
+
+    .form-error {
+        background: #fff0f0;
+        border: 1px solid #ffcdd2;
+        color: #c62828;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+
+    /* Staff Tab Bar (Pills) */
+    .staff-tab-bar {
+        display: flex;
+        gap: 8px;
+    }
+
+    .staff-tab {
+        padding: 8px 18px;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 20px;
+        font-size: 13.5px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #666;
+        font-family: inherit;
+    }
+
+    .staff-tab:hover:not(.active) {
+        background: #f5f5f5;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .staff-tab.active {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    /* Input with Keypad button */
+    .ps-input-with-action {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 100%;
+    }
+
+    .ps-input-with-action .form-control {
+        padding-right: 46px;
+    }
+
+    .input-keypad-btn {
+        position: absolute;
+        right: 8px;
+        background: #f5f5f5;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .input-keypad-btn:hover {
+        background: #eee;
+        color: var(--color-primary, #F2600C);
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    /* Touch Pills */
+    .touch-pill-group {
+        display: flex;
+        gap: 8px;
+    }
+
+    .touch-pill {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 9px 14px;
+        border-radius: 10px;
+        border: 1px solid #ddd;
+        background: white;
+        font-size: 13.5px;
+        font-weight: 500;
+        color: #555;
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: inherit;
+    }
+
+    .touch-pill:hover {
+        background: #f9f9f9;
+        border-color: #ccc;
+    }
+
+    .touch-pill.active {
+        background: #FFF7ED;
+        border-color: var(--color-primary, #F2600C);
+        color: var(--color-primary, #F2600C);
+        font-weight: 600;
+    }
+
+    /* Live Preview Simulator */
+    .bc-live-preview-box {
+        background: #0F172A;
+        border-radius: 12px;
+        padding: 14px 16px;
+        color: white;
+        margin-bottom: 18px;
+    }
+
+    .bc-preview-title {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #94A3B8;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 600;
+    }
+
+    .bc-preview-strip {
+        display: flex;
+        gap: 4px;
+        font-family: monospace;
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
+        overflow-x: auto;
+    }
+
+    .bc-p-seg {
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+    .bc-p-seg.pre { background: #3B82F6; color: white; }
+    .bc-p-seg.item { background: #10B981; color: white; }
+    .bc-p-seg.qty { background: #F59E0B; color: white; }
+    .bc-p-seg.price { background: #EF4444; color: white; }
+    .bc-p-seg.chk { background: #8B5CF6; color: white; }
+
+    .bc-preview-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        font-size: 0.75rem;
+        color: #CBD5E1;
+    }
+
+    .leg-item {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .leg-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    .leg-dot.pre { background: #3B82F6; }
+    .leg-dot.item { background: #10B981; }
+    .leg-dot.qty { background: #F59E0B; }
+    .leg-dot.price { background: #EF4444; }
+    .leg-dot.chk { background: #8B5CF6; }
+
+    /* Scanner Toggle Cards */
+    .bc-toggle-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 16px;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+        margin-bottom: 12px;
+    }
+
+    .bc-toggle-card:hover {
+        border-color: #ddd;
+        background: #fafafa;
+    }
+
+    .bc-toggle-card.checked {
+        border-color: var(--color-primary, #F2600C);
+        background: #FFFBF7;
+    }
+
+    .bc-toggle-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .bc-toggle-left i {
+        font-size: 18px;
+        color: #888;
+        width: 24px;
+        text-align: center;
+    }
+
+    .bc-toggle-card.checked .bc-toggle-left i {
+        color: var(--color-primary, #F2600C);
+    }
+
+    .bc-toggle-title {
+        display: block;
+        font-weight: 600;
+        font-size: 14px;
+        color: #222;
+        margin-bottom: 2px;
+    }
+
+    .bc-toggle-desc {
+        display: block;
+        font-size: 12px;
+        color: #888;
+        line-height: 1.3;
+    }
+
+
+
+    .btn-delete-row {
+        width: 100%;
+        padding: 10px;
+        border: 1.5px solid #ffcdd2;
+        border-radius: 10px;
+        background: #fff5f5;
+        color: #d32f2f;
+        font-size: 13.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: inherit;
+    }
+
+    .btn-delete-row:hover {
+        background: #ffebee;
+        border-color: #ef5350;
+    }
+
+    /* Keypad Modal */
+    .touch-keypad-modal {
+        background: white;
+        border-radius: 20px;
+        width: 320px;
+        padding: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .keypad-header {
+        margin-bottom: 16px;
+        text-align: center;
+    }
+
+    .keypad-title {
+        display: block;
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 4px;
+    }
+
+    .keypad-display {
+        font-size: 28px;
+        font-weight: 700;
+        color: #222;
+    }
+
+    .keypad-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
+
+    .kp-btn {
+        padding: 14px 0;
+        font-size: 18px;
+        font-weight: 600;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        background: #fcfcfc;
+        color: #333;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .kp-btn:active {
+        transform: scale(0.96);
+    }
+
+    .kp-action {
+        background: #f5f5f5;
+        color: #666;
+    }
+
+    .kp-cancel {
+        background: #fff0f0;
+        color: #d32f2f;
+        border-color: #ffcdd2;
+        font-size: 13px;
+    }
+
+    .kp-submit {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    /* Delete Confirm Modal */
+    .bc-del-modal {
+        max-width: 440px;
+    }
+
+    .bc-del-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .bc-del-icon-badge {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: #FEF2F2;
+        color: #DC2626;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+
+    /* ══════════════════════════════════════════════════
+       RESPONSIVE MOBILE CARDS
+       ══════════════════════════════════════════════════ */
+    @@media (max-width: 768px) {
+        .section-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .header-right {
+            width: 100%;
+        }
+
+        .header-right .add-btn {
+            width: 100%;
+            text-align: center;
+            padding: 12px;
+        }
+
+        .point-section {
+            padding: 15px;
+        }
+
+        .list-header {
+            display: none;
+        }
+
+        .list-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            background: #FAFAFA;
+        }
+
+        .cell, .cell-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            text-align: right !important;
+            font-size: 0.8125rem;
+        }
+
+        .cell::before, .cell-main::before {
+            content: attr(data-label);
+            font-weight: 600;
+            color: #888;
+            text-align: left;
+            padding-right: 10px;
+        }
+
+        .cell[data-label="Actions"] {
+            justify-content: flex-end;
+            padding-top: 8px;
+            border-top: 1px dashed #eee;
+        }
+
+        .cell[data-label="Actions"]::before {
+            display: none;
+        }
+    }
+</style>
+
+<RetailSetupPageStyle />
+
+@code {
+    private List<BarcodeReadingSetupModel> rules = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string searchQuery = "";
+    private string alertMessage = "";
+    private bool isSuccess = true;
+
+    private bool showModal = false;
+    private bool isEditMode = false;
+    private string errorMessage = "";
+    private string activeTab = "RulePattern";
+    private BarcodeReadingSetupModel currentRule = new();
+
+    private bool showDeleteModal = false;
+    private BarcodeReadingSetupModel? ruleToDelete;
+
+    // Keypad State
+    private bool showKeypad = false;
+    private string keypadTitle = "";
+    private string keypadField = "";
+    private string keypadValueString = "0";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRules();
+    }
+
+    private async Task LoadRules()
+    {
+        isLoading = true;
+        try
+        {
+            rules = await BarcodeService.GetRulesAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private IEnumerable<BarcodeReadingSetupModel> FilteredRules
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(searchQuery)) return rules;
+            return rules.Where(r => (r.Prefix ?? "").Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                                     (r.BarcodeType ?? "").Contains(searchQuery, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private void OpenAddModal()
+    {
+        isEditMode = false;
+        errorMessage = "";
+        activeTab = "RulePattern";
+        currentRule = new BarcodeReadingSetupModel
+        {
+            Prefix = GenerateAvailablePrefix(),
+            BarcodeType = "BarCode",
+            SelectionType = "Barcode",
+            ItemCodeLength = 5,
+            QuantityLength = 5,
+            IsQuantityFixedAsOne = false,
+            PriceLength = 5,
+            DecimalPlace = 2,
+            ChecksumLength = 1,
+            BarcodeIncludesPrefix = true,
+            HasOverlappingBarcodeItem = false,
+            IsActive = true
+        };
+        showModal = true;
+    }
+
+    private string GenerateAvailablePrefix()
+    {
+        var used = rules.Select(x => x.Prefix).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Enumerable.Range(20, 80)
+            .Select(x => x.ToString("00"))
+            .FirstOrDefault(x => !used.Contains(x)) ?? "00";
+    }
+
+    private void OpenEditModal(BarcodeReadingSetupModel rule)
+    {
+        isEditMode = true;
+        errorMessage = "";
+        activeTab = "RulePattern";
+        currentRule = new BarcodeReadingSetupModel
+        {
+            Prefix = rule.Prefix,
+            BarcodeType = rule.BarcodeType,
+            SelectionType = rule.SelectionType,
+            ItemCodeLength = rule.ItemCodeLength,
+            QuantityLength = rule.QuantityLength,
+            IsQuantityFixedAsOne = rule.IsQuantityFixedAsOne,
+            PriceLength = rule.PriceLength,
+            DecimalPlace = rule.DecimalPlace,
+            ChecksumLength = rule.ChecksumLength,
+            BarcodeIncludesPrefix = rule.BarcodeIncludesPrefix,
+            HasOverlappingBarcodeItem = rule.HasOverlappingBarcodeItem,
+            IsActive = rule.IsActive
+        };
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+
+    private async Task SaveRule()
+    {
+        currentRule.Prefix = currentRule.Prefix?.Trim().ToUpperInvariant() ?? "";
+        if (currentRule.Prefix.Length != 2)
+        {
+            errorMessage = "Prefix must contain exactly 2 characters.";
+            return;
+        }
+        if (!isEditMode && rules.Any(x => x.Prefix.Equals(currentRule.Prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            errorMessage = $"Prefix {currentRule.Prefix} already exists.";
+            return;
+        }
+        if (currentRule.ItemCodeLength < 1)
+        {
+            errorMessage = "Item code length must be at least 1.";
+            return;
+        }
+        if (!currentRule.IsQuantityFixedAsOne && currentRule.QuantityLength < 1)
+        {
+            errorMessage = "Quantity length must be at least 1, or enable Fixed Quantity As One.";
+            return;
+        }
+        if (currentRule.DecimalPlace is < 0 or > 6)
+        {
+            errorMessage = "Decimal place must be between 0 and 6.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var success = await BarcodeService.SaveRuleAsync(currentRule, !isEditMode);
+            if (success)
+            {
+                showModal = false;
+                alertMessage = "Barcode rule saved successfully!";
+                isSuccess = true;
+                await LoadRules();
+            }
+            else
+            {
+                errorMessage = "Failed to save barcode rule.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ConfirmDelete(BarcodeReadingSetupModel rule)
+    {
+        ruleToDelete = rule;
+        showDeleteModal = true;
+    }
+
+    private async Task ExecuteDelete()
+    {
+        if (ruleToDelete != null)
+        {
+            await BarcodeService.DeleteRuleAsync(ruleToDelete.Prefix);
+            showDeleteModal = false;
+            showModal = false;
+            ruleToDelete = null;
+            alertMessage = "Barcode rule deleted successfully.";
+            isSuccess = true;
+            await LoadRules();
+        }
+    }
+
+    // Touch Keypad Methods
+    private void OpenKeypad(string field, object currentVal, string title)
+    {
+        keypadField = field;
+        keypadTitle = title;
+        keypadValueString = currentVal?.ToString() ?? "0";
+        showKeypad = true;
+    }
+
+    private void KeypadAppend(string val)
+    {
+        if (keypadValueString == "0")
+            keypadValueString = val;
+        else
+            keypadValueString += val;
+    }
+
+    private void KeypadClear() => keypadValueString = "0";
+
+    private void KeypadBackspace()
+    {
+        if (keypadValueString.Length > 1)
+            keypadValueString = keypadValueString.Substring(0, keypadValueString.Length - 1);
+        else
+            keypadValueString = "0";
+    }
+
+    private void KeypadSave()
+    {
+        if (int.TryParse(keypadValueString, out var num))
+        {
+            switch (keypadField)
+            {
+                case "ItemCodeLength": currentRule.ItemCodeLength = Math.Max(0, num); break;
+                case "QuantityLength": currentRule.QuantityLength = Math.Max(0, num); break;
+                case "PriceLength": currentRule.PriceLength = Math.Max(0, num); break;
+                case "DecimalPlace": currentRule.DecimalPlace = Math.Max(0, num); break;
+                case "ChecksumLength": currentRule.ChecksumLength = Math.Max(0, num); break;
+            }
+        }
+        showKeypad = false;
+    }
+
+    private void CloseKeypad() => showKeypad = false;
+}

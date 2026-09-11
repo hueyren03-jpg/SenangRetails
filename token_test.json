@@ -1,0 +1,12 @@
+{
+  "statusCode": 200,
+  "message": "Success",
+  "result": {
+    "RequiresTwoFactor": false,
+    "RequiresCompanySelection": false,
+    "AuthResponse": {
+      "AccessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2YmEwOTJiZC1kMzk2LTQ0NTgtOWNhNi0yYTRmNTFkOWUzMWQiLCJzdWIiOiJlYmlkZW1vMkBnbWFpbC5jb20iLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9uYW1laWRlbnRpZmllciI6ImViaWRlbW8yQGdtYWlsLmNvbSIsImh0dHA6Ly9zY2hlbWFzLnhtbHNvYXAub3JnL3dzLzIwMDUvMDUvaWRlbnRpdHkvY2xhaW1zL25hbWUiOiJlYmlkZW1vMkBnbWFpbC5jb20iLCJodHRwOi8vc2NoZW1hcy54bWxzb2FwLm9yZy93cy8yMDA1LzA1L2lkZW50aXR5L2NsYWltcy9lbWFpbGFkZHJlc3MiOiJlYmlkZW1vMkBnbWFpbC5jb20iLCJUZW5hbnRNb2RlIjoiU2luZ2xlVGVuYW50IiwiSXNIb3N0VXNlciI6ImZhbHNlIiwiSXNTdXBlckFkbWluIjoidHJ1ZSIsIkNvbXBhbmllcyI6InFOQU1xSnJmWUsiLCJyZWZyZXNoQXQiOiIxNzg5MTEzNjQ2IiwiZXhwIjoxNzkxNTEzNjQ2LCJpc3MiOiJodHRwczovL2ViaXNvZnR3YXJlLmNvbS5teSIsImF1ZCI6Imh0dHBzOi8vZWJpc29mdHdhcmUuY29tLm15In0.EDAPaNURvTzPX4aAJiugS-LnkXVfx5vCTbLW_rgj17Y",
+      "RefreshToken": "2ADC9WXLB4A0ndSbezjBo1ZlIImdw++Thc+hbhwqwrA="
+    }
+  }
+}

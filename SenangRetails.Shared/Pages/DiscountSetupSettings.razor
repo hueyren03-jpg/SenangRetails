@@ -1,0 +1,1331 @@
+@page "/settings/discount"
+@page "/discount-setup"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.DiscountSetupService
+@using SenangRetails.Shared.Components
+@inject IDiscountSetupService DiscountService
+@inject SenangRetails.Shared.Services.AppState AppState
+@inject IJSRuntime JS
+
+<div class="section-container">
+    <div class="section-header">
+        <div class="header-left">
+            <h2>Discount Setup</h2>
+            <p>Configure discounts and their availability.</p>
+        </div>
+        <div class="header-right">
+            <button class="add-btn" @onclick="OpenAddModal">+ Add</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(statusNotice))
+    {
+        <div class="@(isStatusError ? "error-banner" : "success-banner")" style="margin-bottom: 20px;">
+            @statusNotice
+        </div>
+    }
+
+    <div class="">
+        <div class="point-section">
+            <div class="section-title-row-with-action">
+                <h3>Discount Rules</h3>
+                @if (discounts.Count > 0)
+                {
+                    <span class="rule-count-text">@discounts.Count rule(s)</span>
+                }
+            </div>
+
+            @if (isLoading)
+            {
+                <div class="empty-state">Loading discount rules...</div>
+            }
+            else if (discounts.Count == 0)
+            {
+                <div class="empty-state">No discount rules configured yet.</div>
+            }
+            else
+            {
+                <div class="list-container">
+                    <div class="list-header">
+                        <span class="align-left">Description</span>
+                        <span class="align-center">Active</span>
+                        <span class="align-center">Method</span>
+                        <span class="align-center">Amount</span>
+                        <span class="align-center">At Cost</span>
+                        <span class="align-center">Open Disc</span>
+                        <span class="align-center">Start Date</span>
+                        <span class="align-center">End Date</span>
+                    </div>
+                    @foreach (var item in discounts)
+                    {
+                        <div class="list-item" @onclick="() => OpenEditModal(item)">
+                            <span class="cell-main align-left ds-primary-cell" data-label="Description">@item.Description</span>
+                            <span class="cell align-center" data-label="Active" @onclick:stopPropagation="true">
+                                <span class="custom-tick-checkbox @(item.IsActive ? "checked" : "")"
+                                      style="cursor: pointer;"
+                                      title="Toggle Active"
+                                      @onclick="() => ToggleActive(item.Id)">
+                                    @if (item.IsActive)
+                                    {
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    }
+                                </span>
+                            </span>
+                            <span class="cell align-center" data-label="Method">@item.DiscountMethod</span>
+                            <span class="cell align-center" data-label="Amount">@item.FormattedAmount</span>
+                            <span class="cell align-center" data-label="At Cost">
+                                @if (item.IsAtCost)
+                                {
+                                    <span class="custom-tick-checkbox checked">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="custom-tick-checkbox"></span>
+                                }
+                            </span>
+                            <span class="cell align-center" data-label="Open Disc">
+                                @if (item.IsOpenDiscount)
+                                {
+                                    <span class="custom-tick-checkbox checked">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="custom-tick-checkbox"></span>
+                                }
+                            </span>
+                            <span class="cell align-center" data-label="Start Date">@(item.DateFrom.HasValue ? item.DateFrom.Value.ToString("dd/MM/yyyy") : "-")</span>
+                            <span class="cell align-center" data-label="End Date">@(item.DateTo.HasValue ? item.DateTo.Value.ToString("dd/MM/yyyy") : "-")</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- ADD / EDIT MODAL (MATCHING EXACT USER SCREENSHOT DESIGN & TABS)           -->
+<!-- ========================================================================= -->
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-box" @onclick:stopPropagation>
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h3 class="modal-title">@(isEditing ? "Edit Discount Setup" : "Add Discount Setup")</h3>
+            </div>
+
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error">@formError</div>
+                }
+
+                <!-- Section Tabs: General Setup & Availability -->
+                <div class="staff-tab-bar" style="margin-bottom: 20px;">
+                    <button type="button"
+                            class="staff-tab @(activeTab == "GeneralSetup" ? "active" : "")"
+                            @onclick='() => activeTab = "GeneralSetup"'>
+                        General Setup
+                    </button>
+                    <button type="button"
+                            class="staff-tab @(activeTab == "UsageLimit" ? "active" : "")"
+                            @onclick='() => activeTab = "UsageLimit"'>
+                        Availability
+                    </button>
+                </div>
+
+                @if (activeTab == "GeneralSetup")
+                {
+                    <!-- SECTION 1: GENERAL SETUP -->
+                    <!-- Description with inline Is Active Checkbox -->
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label class="form-label" style="margin: 0;">Description <span class="required">*</span></label>
+                            <div class="modal-active-row">
+                                <input type="checkbox" id="dsIsActive" class="staff-checkbox"
+                                       @bind="currentDiscount.IsActive" />
+                                <label for="dsIsActive" class="staff-checkbox-label">Is Active</label>
+                            </div>
+                        </div>
+                        <input type="text"
+                               class="form-control"
+                               @bind="currentDiscount.Description"
+                               placeholder="Description" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Branch</label>
+                        <select class="form-control" @bind="currentDiscount.BranchId">
+                            <option value="">All Branches</option>
+                            @foreach (var branchId in AvailableDiscountBranches)
+                            {
+                                <option value="@branchId">@branchId</option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- At Cost and Open Discount Checkboxes -->
+                    <div class="form-group">
+                        <div style="display: flex; gap: 24px; align-items: center; padding: 4px 0;">
+                            <div class="modal-active-row @(currentDiscount.IsOpenDiscount ? "disabled-row" : "")">
+                                <input type="checkbox" id="dsAtCost" class="staff-checkbox"
+                                       checked="@currentDiscount.IsAtCost"
+                                       disabled="@currentDiscount.IsOpenDiscount"
+                                       @onchange="OnAtCostToggled" />
+                                <label for="dsAtCost" class="staff-checkbox-label" style="@(currentDiscount.IsOpenDiscount ? "cursor: not-allowed; opacity: 0.5;" : "")">At Cost</label>
+                            </div>
+                            <div class="modal-active-row">
+                                <input type="checkbox" id="dsOpenDiscount" class="staff-checkbox"
+                                       checked="@currentDiscount.IsOpenDiscount"
+                                       @onchange="OnOpenDiscountToggled" />
+                                <label for="dsOpenDiscount" class="staff-checkbox-label">Open Discount</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Discount Method Dropdown -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            Discount Method <span class="required">*</span>
+                            @if (currentDiscount.IsOpenDiscount)
+                            {
+                                <span class="locked-hint">(Locked - Open Discount)</span>
+                            }
+                            else if (currentDiscount.IsAtCost)
+                            {
+                                <span class="locked-hint">(Locked - At Cost)</span>
+                            }
+                        </label>
+                        <select class="form-control"
+                                disabled="@(currentDiscount.IsOpenDiscount || currentDiscount.IsAtCost)"
+                                @bind="currentDiscount.DiscountMethod">
+                            <option value="Percent %">1. Percent %</option>
+                            <option value="Amount">2. Amount</option>
+                            <option value="Nos" disabled>3. Nos (Unavailable)</option>
+                            <option value="Compound">4. Compound</option>
+                        </select>
+                    </div>
+
+                    @if (currentDiscount.DiscountMethod == "Compound" &&
+                         !currentDiscount.IsOpenDiscount && !currentDiscount.IsAtCost)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Compound Formula <span class="required">*</span></label>
+                            <input type="text"
+                                   class="form-control"
+                                   @bind="currentDiscount.DiscountFormula"
+                                   placeholder="Example: 11%+11%" />
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Amount Field -->
+                        <div class="form-group">
+                            <label class="form-label">
+                                @(currentDiscount.DiscountMethod == "Nos" ? "Number" : "Amount")
+                                @if (currentDiscount.IsOpenDiscount)
+                                {
+                                    <span class="locked-hint">(Locked - Open Discount)</span>
+                                }
+                                else if (currentDiscount.IsAtCost)
+                                {
+                                    <span class="locked-hint">(Locked - At Cost)</span>
+                                }
+                                else
+                                {
+                                    <span class="required">*</span>
+                                }
+                            </label>
+                            <input type="number"
+                                   class="form-control"
+                                   min="0"
+                                   step="0.01"
+                                   disabled="@(currentDiscount.IsOpenDiscount || currentDiscount.IsAtCost || currentDiscount.DiscountMethod == "Nos")"
+                                   @bind="currentDiscount.Amount"
+                                   placeholder="0.00" />
+                        </div>
+                    }
+                }
+                else if (activeTab == "UsageLimit")
+                {
+                    <!-- SECTION 2: AVAILABILITY -->
+                    <!-- Available Date From -->
+                    <div class="form-group">
+                        <label class="form-label">Available Date From</label>
+                        <MobileDatePicker @bind-Value="currentDiscount.DateFrom"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select Start Date" />
+                    </div>
+
+                    <!-- Available Date To -->
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label class="form-label" style="margin: 0;">Available Date To</label>
+                            @if (currentDiscount.DateFrom.HasValue && currentDiscount.DateTo.HasValue && currentDiscount.DateTo.Value >= currentDiscount.DateFrom.Value)
+                            {
+                                <span style="font-size: 12px; color: var(--color-primary, #f2600c); font-weight: 600;">
+                                    @((int)(currentDiscount.DateTo.Value.Date - currentDiscount.DateFrom.Value.Date).TotalDays + 1) days covered
+                                </span>
+                            }
+                        </div>
+                        <MobileDatePicker @bind-Value="currentDiscount.DateTo"
+                                          DateFormat="dd/MM/yyyy"
+                                          Placeholder="Select End Date" />
+                    </div>
+
+                    <!-- Weekdays map to the API's underscore-delimited WeekDays field. -->
+                    <div class="form-group">
+                        <label class="form-label">Weekday</label>
+                        <select class="form-control"
+                                value="@SelectedWeekDayValue"
+                                @onchange="ChangeWeekDay">
+                            <option value="All">All Days</option>
+                            @if (SelectedWeekDayValue == "Custom")
+                            {
+                                <option value="Custom">@currentDiscount.FormattedWeekDays</option>
+                            }
+                            @foreach (var day in AllWeekDays)
+                            {
+                                <option value="@day">@GetWeekDayDisplayName(day)</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Frequency Type</label>
+                        <select class="form-control" @bind="currentDiscount.FrequencyTypeId">
+                            <option value="0">0</option>
+                            <option value="1">1</option>
+                            @if (currentDiscount.FrequencyTypeId != 0 && currentDiscount.FrequencyTypeId != 1)
+                            {
+                                <option value="@currentDiscount.FrequencyTypeId">@currentDiscount.FrequencyTypeId</option>
+                            }
+                        </select>
+                    </div>
+
+                }
+
+                @if (isEditing)
+                {
+                    <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid #f0f0f0;">
+                        <button type="button" class="btn-delete-row" @onclick="PromptDelete">
+                            <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete Discount Rule
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <!-- Modal Footer (Cancel & Save Buttons identical to Staff modal screenshot) -->
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" @onclick="CloseModal">Cancel</button>
+                <button type="button" class="btn-save" @onclick="SaveDiscount" disabled="@isSaving">
+                    @(isSaving ? "Saving..." : "Save")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ========================================================================= -->
+<!-- DELETE CONFIRMATION POPUP                                                 -->
+<!-- ========================================================================= -->
+@if (isDeleteConfirmOpen && discountToDelete != null)
+{
+    <div class="prod-modal-overlay" style="z-index: 3200;" @onclick="() => isDeleteConfirmOpen = false">
+        <div class="prod-modal-box prod-modal-sm" style="text-align: center;" @onclick:stopPropagation>
+            <div class="prod-modal-header">
+                <span class="prod-modal-title">Confirm Delete</span>
+                <button class="prod-modal-close" @onclick="() => isDeleteConfirmOpen = false">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="prod-modal-body" style="padding: 1.5rem 2rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: #FFF0F0; display: flex; align-items: center; justify-content: center;">
+                    <i class="fa-solid fa-trash" style="font-size: 1.4rem; color: #e55;"></i>
+                </div>
+                <p style="color: #555; margin: 0; font-size: 14px; line-height: 1.5;">
+                    Are you sure you want to delete discount rule for <strong>@(discountToDelete.Description)</strong>?
+                </p>
+            </div>
+            <div class="prod-modal-footer">
+                <button class="prod-modal-cancel-btn" @onclick="() => isDeleteConfirmOpen = false">Cancel</button>
+                <button class="prod-modal-save-btn" @onclick="ConfirmDeleteDiscount" disabled="@isSaving">
+                    @(isSaving ? "Deleting..." : "Delete")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<DiscountSetupModel> discounts = new();
+    private DiscountSetupModel currentDiscount = new();
+    private DiscountSetupModel? discountToDelete;
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool showModal = false;
+    private bool isEditing = false;
+    private bool isDeleteConfirmOpen = false;
+    private string activeTab = "GeneralSetup";
+
+    private string statusNotice = "";
+    private bool isStatusError = false;
+    private string formError = "";
+
+    private static readonly string[] AllWeekDays = ["Mon", "Tues", "Wed", "Thurs", "Fri", "Satur", "Sun"];
+
+    private IReadOnlyList<string> AvailableDiscountBranches =>
+        (AppState.AvailableBranches ?? [])
+            .Append(currentDiscount.BranchId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDiscounts();
+    }
+
+    private async Task LoadDiscounts()
+    {
+        isLoading = true;
+        try
+        {
+            discounts = await DiscountService.GetDiscountsAsync();
+            if (!string.IsNullOrWhiteSpace(DiscountService.LastError))
+            {
+                statusNotice = DiscountService.LastError;
+                isStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            statusNotice = $"Failed to load discounts: {ex.Message}";
+            isStatusError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddModal()
+    {
+        isEditing = false;
+        formError = "";
+        activeTab = "GeneralSetup";
+        currentDiscount = new DiscountSetupModel
+        {
+            Id = string.Empty,
+            Description = "",
+            BranchId = !string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+                ? AppState.SelectedBranchID
+                : AppState.CurrentBranch?.BranchID ?? string.Empty,
+            IsAtCost = false,
+            IsOpenDiscount = false,
+            IsActive = true,
+            DiscountMethod = "Percent %",
+            Amount = 10.00m,
+            DiscountFormula = string.Empty,
+            DateFrom = null,
+            DateTo = null,
+            WeekDays = ["Mon", "Tues", "Wed", "Thurs", "Fri", "Satur", "Sun"],
+            FrequencyType = string.Empty,
+            FrequencyTypeId = 0,
+            Frequency = 0
+        };
+        showModal = true;
+    }
+
+    private void OpenEditModal(DiscountSetupModel item)
+    {
+        isEditing = true;
+        formError = "";
+        activeTab = "GeneralSetup";
+        currentDiscount = item.Clone();
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        formError = "";
+    }
+
+    private void OnOpenDiscountToggled(ChangeEventArgs e)
+    {
+        var val = (bool)(e.Value ?? false);
+        currentDiscount.IsOpenDiscount = val;
+        if (val)
+        {
+            currentDiscount.IsAtCost = false;
+            currentDiscount.Amount = 0;
+        }
+    }
+
+    private void OnAtCostToggled(ChangeEventArgs e)
+    {
+        var val = (bool)(e.Value ?? false);
+        currentDiscount.IsAtCost = val;
+        if (val)
+        {
+            currentDiscount.IsOpenDiscount = false;
+            currentDiscount.Amount = 0;
+        }
+    }
+
+    private string SelectedWeekDayValue
+    {
+        get
+        {
+            var selected = currentDiscount.WeekDays ?? [];
+            if (selected.Count == 0 || AllWeekDays.All(day => selected.Contains(day, StringComparer.OrdinalIgnoreCase)))
+                return "All";
+
+            return selected.Count == 1
+                ? AllWeekDays.FirstOrDefault(day => selected.Contains(day, StringComparer.OrdinalIgnoreCase)) ?? "All"
+                : "Custom";
+        }
+    }
+
+    private void ChangeWeekDay(ChangeEventArgs e)
+    {
+        var selected = e.Value?.ToString();
+        if (string.Equals(selected, "Custom", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        currentDiscount.WeekDays = string.Equals(selected, "All", StringComparison.OrdinalIgnoreCase)
+            ? AllWeekDays.ToList()
+            : AllWeekDays.Where(day => string.Equals(day, selected, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private static string GetWeekDayDisplayName(string day) => day switch
+    {
+        "Mon" => "Monday",
+        "Tues" => "Tuesday",
+        "Wed" => "Wednesday",
+        "Thurs" => "Thursday",
+        "Fri" => "Friday",
+        "Satur" => "Saturday",
+        "Sun" => "Sunday",
+        _ => day
+    };
+
+    private async Task ToggleActive(string id)
+    {
+        try
+        {
+            var item = discounts.FirstOrDefault(d => d.Id == id);
+            if (item == null) return;
+
+            var newStatus = !item.IsActive;
+            var success = await DiscountService.ToggleActiveAsync(id);
+            if (success)
+            {
+                item.IsActive = newStatus;
+                statusNotice = $"Discount '{item.Description}' is now {(newStatus ? "Active" : "Inactive")}.";
+                isStatusError = false;
+            }
+            else
+            {
+                statusNotice = DiscountService.LastError ?? "Failed to update status.";
+                isStatusError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            statusNotice = ex.Message;
+            isStatusError = true;
+        }
+    }
+
+    private async Task SaveDiscount()
+    {
+        formError = "";
+
+        if (string.IsNullOrWhiteSpace(currentDiscount.Description))
+        {
+            formError = "Description is required.";
+            activeTab = "GeneralSetup";
+            return;
+        }
+
+        if (currentDiscount.IsOpenDiscount)
+        {
+            currentDiscount.IsAtCost = false;
+            currentDiscount.Amount = 0;
+        }
+        else if (currentDiscount.IsAtCost)
+        {
+            currentDiscount.Amount = 0;
+        }
+        else
+        {
+            if (currentDiscount.Amount < 0)
+            {
+                formError = "Amount must be 0 or greater.";
+                activeTab = "GeneralSetup";
+                return;
+            }
+
+            if (currentDiscount.DiscountMethod == "Percent %" && currentDiscount.Amount > 100)
+            {
+                formError = "Percentage discount cannot exceed 100%.";
+                activeTab = "GeneralSetup";
+                return;
+            }
+
+            if (currentDiscount.DiscountMethod == "Compound" &&
+                string.IsNullOrWhiteSpace(currentDiscount.DiscountFormula))
+            {
+                formError = "Compound formula is required.";
+                activeTab = "GeneralSetup";
+                return;
+            }
+        }
+
+        if (currentDiscount.DateFrom.HasValue && currentDiscount.DateTo.HasValue && currentDiscount.DateTo.Value < currentDiscount.DateFrom.Value)
+        {
+            formError = "End date cannot be before start date.";
+            activeTab = "UsageLimit";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var success = await DiscountService.SaveDiscountAsync(currentDiscount, !isEditing);
+            if (success)
+            {
+                showModal = false;
+                statusNotice = $"Discount '{currentDiscount.Description}' saved successfully.";
+                isStatusError = false;
+                await LoadDiscounts();
+            }
+            else
+            {
+                formError = DiscountService.LastError ?? "Failed to save discount setup.";
+            }
+        }
+        catch (Exception ex)
+        {
+            formError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void PromptDelete()
+    {
+        discountToDelete = currentDiscount;
+        isDeleteConfirmOpen = true;
+    }
+
+    private async Task ConfirmDeleteDiscount()
+    {
+        if (discountToDelete == null) return;
+
+        isSaving = true;
+        try
+        {
+            var success = await DiscountService.DeleteDiscountAsync(discountToDelete.Id);
+            if (success)
+            {
+                discounts.RemoveAll(d => d.Id == discountToDelete.Id);
+                isDeleteConfirmOpen = false;
+                showModal = false;
+                statusNotice = $"Discount '{discountToDelete.Description}' deleted.";
+                isStatusError = false;
+            }
+            else
+            {
+                formError = DiscountService.LastError ?? "Delete failed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            formError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+}
+
+<style>
+    /* ========================================================================= */
+    /* MAIN PAGE UI (POINT SETUP PAGE STYLE)                                     */
+    /* ========================================================================= */
+    .section-container {
+        padding: 20px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 0.875rem; /* 14px base */
+        padding: clamp(0px, 4vw, 18px) clamp(16px, 4vw, 34px);
+    }
+
+    .section-header {
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-left h2 {
+        font-size: 1.25rem; /* 20px */
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .header-left p {
+        color: #888;
+        font-size: 0.875rem; /* 14px */
+        margin: 5px 0 0;
+    }
+
+    .header-right {
+        flex-shrink: 0;
+    }
+
+    .point-section {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+    }
+
+    .section-title-row-with-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+    }
+
+    .section-title-row-with-action h3 {
+        font-size: 1rem; /* 16px */
+        font-weight: 600;
+        color: #222;
+        margin: 0;
+    }
+
+    .rule-count-text {
+        font-size: 0.8125rem;
+        color: #888;
+    }
+
+    .add-btn {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 8px;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .add-btn:hover {
+        transform: translateY(-1px);
+        opacity: 0.95;
+    }
+
+    .empty-state {
+        font-size: 0.75rem; /* 12px */
+        color: #bbb;
+        padding: 20px 0;
+        text-align: center;
+    }
+
+    /* List Table - Desktop View */
+    .list-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .list-header {
+        display: grid;
+        grid-template-columns: 2fr 0.7fr 1fr 1fr 0.8fr 0.8fr 1fr 1fr;
+        padding: 12px 0;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 600;
+        color: #333;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .list-item {
+        display: grid;
+        grid-template-columns: 2fr 0.7fr 1fr 1fr 0.8fr 0.8fr 1fr 1fr;
+        padding: 16px 0;
+        background: white;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        transition: background 0.15s;
+        align-items: center;
+    }
+
+    .list-item:last-child {
+        border-bottom: none;
+    }
+
+    .list-item:hover {
+        background: #fafafa;
+    }
+
+    .cell-main {
+        font-size: 0.875rem; /* 14px */
+        font-weight: 500;
+        color: #222;
+    }
+
+    .ds-primary-cell {
+        background: transparent;
+        color: #334155;
+        border-radius: 0;
+        box-shadow: none;
+        font-weight: 600;
+    }
+
+    .cell {
+        font-size: 0.875rem; /* 14px */
+        font-weight: 500;
+        color: #444;
+    }
+
+    .align-left {
+        text-align: left;
+    }
+
+    .align-center {
+        text-align: center;
+    }
+
+    .custom-tick-checkbox {
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid #ccc;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: white;
+        transition: all 0.2s;
+        vertical-align: middle;
+    }
+
+    .custom-tick-checkbox.checked {
+        background-color: var(--color-primary, #F2600C);
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    /* Mobile Cards View */
+    @@media (max-width: 768px) {
+        .point-section {
+            overflow-x: visible;
+            padding: 16px;
+        }
+
+        .list-header {
+            display: none;
+        }
+
+        .list-container {
+            min-width: 100%;
+            gap: 12px;
+        }
+
+        .list-item {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            padding: 0;
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .list-item:hover {
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .list-item .cell-main,
+        .list-item .cell {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.875rem;
+            text-align: left;
+        }
+
+        .list-item .cell-main:last-child,
+        .list-item .cell:last-child {
+            border-bottom: none;
+        }
+
+        .list-item .cell-main::before,
+        .list-item .cell::before {
+            content: attr(data-label);
+            font-weight: 600;
+            color: #666;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .point-section {
+            padding: 12px;
+        }
+
+        .list-item {
+            margin-bottom: 10px;
+        }
+
+        .list-item .cell-main,
+        .list-item .cell {
+            padding: 10px 14px;
+            font-size: 0.8125rem;
+        }
+
+        .list-item .cell-main::before,
+        .list-item .cell::before {
+            font-size: 0.6875rem;
+        }
+    }
+
+    /* ========================================================================= */
+    /* MODAL STYLES (MATCHING USER'S NEW SCREENSHOT - STAFF MODAL DESIGN)        */
+    /* ========================================================================= */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background-color: rgba(0, 0, 0, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        backdrop-filter: blur(2px);
+        padding: 16px;
+        box-sizing: border-box;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 16px;
+        width: 480px;
+        max-width: 94%;
+        max-height: 90vh;
+        max-height: 90dvh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .modal-header {
+        padding: 20px 24px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0;
+    }
+
+    .modal-body {
+        padding: 20px 24px;
+        overflow-y: auto;
+        flex: 1;
+        box-sizing: border-box;
+    }
+
+    .modal-footer {
+        padding: 16px 24px;
+        display: flex;
+        gap: 12px;
+        border-top: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .btn-cancel {
+        flex: 1;
+        padding: 13px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: white;
+        font-size: 15px;
+        font-weight: 600;
+        color: #444;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-cancel:hover {
+        background: #f5f5f5;
+    }
+
+    .btn-save {
+        flex: 1;
+        padding: 13px;
+        border: none;
+        border-radius: 10px;
+        background-color: var(--color-primary, #F2600C);
+        color: white;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-save:hover {
+        opacity: 0.88;
+    }
+
+    .btn-save:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Form Fields */
+    .form-group {
+        margin-bottom: 18px;
+    }
+
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+    }
+
+    .required {
+        color: var(--color-primary, #F2600C);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        font-size: 14px;
+        font-family: inherit;
+        box-sizing: border-box;
+        color: #222;
+        transition: border-color 0.2s;
+        background: white;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .form-control:disabled {
+        background-color: #fafafa;
+        color: #888;
+        cursor: not-allowed;
+    }
+
+    .form-error {
+        background: #fff0f0;
+        border: 1px solid #ffcdd2;
+        color: #c62828;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+
+    /* Active Row & Checkbox */
+    .modal-active-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .staff-checkbox {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
+        border: 1.5px solid #ccc;
+        border-radius: 5px;
+        background-color: white;
+        cursor: pointer;
+        position: relative;
+        flex-shrink: 0;
+        transition: border-color 0.2s;
+        margin: 0;
+    }
+
+    .staff-checkbox:checked {
+        background-color: var(--color-primary, #F2600C);
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .staff-checkbox:checked::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 1px;
+        width: 5px;
+        height: 10px;
+        border: solid white;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+
+    .staff-checkbox-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #555;
+        cursor: pointer;
+        margin: 0;
+    }
+
+    /* Staff Tab Bar (Pills) */
+    .staff-tab-bar {
+        display: flex;
+        gap: 8px;
+    }
+
+    .staff-tab {
+        padding: 8px 20px;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #666;
+        font-family: inherit;
+    }
+
+    .staff-tab:hover:not(.active) {
+        background: #f5f5f5;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .staff-tab.active {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .staff-tab.disabled-tab {
+        opacity: 0.45;
+        cursor: not-allowed !important;
+        background: #f5f5f5;
+        color: #999;
+        border-color: #ddd;
+    }
+
+    .locked-hint {
+        font-size: 11px;
+        color: #888;
+        font-weight: 500;
+        margin-left: 6px;
+        font-style: italic;
+    }
+
+    .disabled-row {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    .disabled-row input {
+        cursor: not-allowed;
+    }
+
+    .field-disabled {
+        opacity: 0.5;
+    }
+
+    .btn-delete-row {
+        width: 100%;
+        padding: 10px;
+        border: 1.5px solid #ffcdd2;
+        border-radius: 10px;
+        background: #fff5f5;
+        color: #d32f2f;
+        font-size: 13.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: inherit;
+    }
+
+    .btn-delete-row:hover {
+        background: #ffebee;
+        border-color: #ef5350;
+    }
+
+    /* Banner Alerts */
+    .error-banner {
+        background: #fff0f0;
+        border: 1px solid #ffcccc;
+        color: #cc0000;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.8125rem;
+    }
+
+    .success-banner {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        color: #166534;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.8125rem;
+    }
+
+    /* Delete Popup */
+    .prod-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 3200;
+        backdrop-filter: blur(2px);
+    }
+
+    .prod-modal-box {
+        background: white;
+        border-radius: 16px;
+        width: 92%;
+        max-width: 440px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+
+    .prod-modal-sm {
+        max-width: 440px;
+    }
+
+    .prod-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 24px 14px;
+        border-bottom: 1px solid #F0F0F0;
+        flex-shrink: 0;
+    }
+
+    .prod-modal-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1A1A1A;
+    }
+
+    .prod-modal-close {
+        background: none;
+        border: none;
+        font-size: 1rem;
+        color: #AAAAAA;
+        cursor: pointer;
+        padding: 4px;
+        line-height: 1;
+    }
+
+    .prod-modal-close:hover {
+        color: #333;
+    }
+
+    .prod-modal-body {
+        overflow-y: auto;
+        flex: 1;
+        padding: 0;
+    }
+
+    .prod-modal-footer {
+        display: flex;
+        gap: 10px;
+        padding: 14px 24px;
+        border-top: 1px solid #F0F0F0;
+        flex-shrink: 0;
+    }
+
+    .prod-modal-cancel-btn {
+        flex: 1;
+        padding: 12px;
+        border: 1.5px solid #E0E0E0;
+        border-radius: 10px;
+        background: white;
+        color: #555;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .prod-modal-cancel-btn:hover {
+        border-color: #BBBBBB;
+    }
+
+    .prod-modal-save-btn {
+        flex: 1;
+        padding: 12px;
+        border: none;
+        border-radius: 10px;
+        background: var(--color-primary, #F2600C);
+        color: white;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .prod-modal-save-btn:hover {
+        opacity: 0.9;
+    }
+</style>

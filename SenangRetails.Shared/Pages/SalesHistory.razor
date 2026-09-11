@@ -1,0 +1,264 @@
+@page "/sales-history"
+@inherits SenangRetails.Shared.Pages.BasePage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<PageTitle>Sales History</PageTitle>
+
+<div class="sh-container sales-overview-page">
+    @{
+        var visibleSales = FilteredSales();
+        var salesTotal = sales.Sum(s => s.TotalAfterTax);
+        var billCount = sales.Count;
+        var averageBill = billCount == 0 ? 0m : salesTotal / billCount;
+        var visibleTotal = visibleSales.Sum(s => s.TotalAfterTax);
+    }
+
+    <header class="sh-topbar">
+        <button class="sh-back-btn" @onclick="GoBack">
+            <i class="bi bi-chevron-left"></i>
+            <span>Back</span>
+        </button>
+        <div class="sh-title-group">
+            <div class="sh-title">Sales Today</div>
+            <div class="sh-subtitle">Cash sales and completed bill activity</div>
+        </div>
+    </header>
+
+    <section class="sh-summary-grid" aria-label="Sales summary">
+        <article class="sh-summary-item sh-summary-primary">
+            <span class="sh-summary-icon"><i class="fa-solid fa-chart-line"></i></span>
+            <div>
+                <span class="sh-summary-label">Sales Today</span>
+                <strong>@(isLoading ? "..." : $"RM {salesTotal:N2}")</strong>
+            </div>
+        </article>
+        <article class="sh-summary-item">
+            <span class="sh-summary-icon"><i class="fa-solid fa-receipt"></i></span>
+            <div>
+                <span class="sh-summary-label">Number of Bills Today</span>
+                <strong>@(isLoading ? "..." : billCount.ToString("N0"))</strong>
+            </div>
+        </article>
+        <article class="sh-summary-item">
+            <span class="sh-summary-icon"><i class="fa-solid fa-wallet"></i></span>
+            <div>
+                <span class="sh-summary-label">Average Bill Today</span>
+                <strong>@(isLoading ? "..." : $"RM {averageBill:N2}")</strong>
+            </div>
+        </article>
+    </section>
+
+    <div class="sh-workspace">
+        <aside class="sh-date-panel">
+            <div class="sh-panel-heading">
+                <i class="bi bi-calendar3"></i>
+                <span>Select Date</span>
+            </div>
+            <div class="sh-date-picker-wrap">
+                <MobileDatePicker @bind-Value="selectedDate"
+                                  DateFormat="dd/MM/yyyy"
+                                  Placeholder="Select Date" />
+            </div>
+            <div class="sh-date-options">
+                @foreach (var day in RecentSalesDays)
+                {
+                    <button class="sh-date-option @(day.Date == selectedDate.Date ? "active" : "")"
+                            @onclick="() => SelectSalesDate(day)">
+                        <span>@FormatSalesDay(day)</span>
+                        <strong>@day.ToString("dd MMM")</strong>
+                    </button>
+                }
+            </div>
+        </aside>
+
+        <section class="sh-results-panel">
+            <div class="sh-results-header">
+                <div class="sh-selected-date">
+                    <i class="bi bi-calendar4"></i>
+                    <div>
+                        <strong>@selectedDate.ToString("dddd, dd MMMM yyyy")</strong>
+                        <span>@billCount bill@(billCount == 1 ? "" : "s") recorded</span>
+                    </div>
+                </div>
+                <div class="sh-search-wrap">
+                    <i class="bi bi-search"></i>
+                    <input type="text"
+                           class="sh-search-input"
+                           inputmode="decimal"
+                           aria-label="Search sales by amount"
+                           placeholder="Search by amount"
+                           @bind="searchAmount"
+                           @bind:event="oninput" />
+                    @if (!string.IsNullOrWhiteSpace(searchAmount))
+                    {
+                        <button class="sh-search-clear" aria-label="Clear amount search" @onclick='() => searchAmount = ""'>
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (showAmountError)
+            {
+                <div class="sh-error-text">
+                    <i class="bi bi-exclamation-circle"></i>
+                    Enter a number only, for example 123 or 123.45.
+                </div>
+            }
+
+            <div class="sh-list">
+                @if (isLoading)
+                {
+                    <div class="sh-empty">
+                        <i class="bi bi-hourglass-split"></i>
+                        <div>Loading sales...</div>
+                    </div>
+                }
+                else if (!visibleSales.Any())
+                {
+                    <div class="sh-empty">
+                        <i class="bi bi-receipt sh-empty-icon"></i>
+                        <div>No sales records found for this date.</div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var sale in visibleSales)
+                    {
+                        var status = string.IsNullOrWhiteSpace(sale.eInvoiceStatus) ? "-" : sale.eInvoiceStatus;
+                        var hasInvoiceStatus = status != "-";
+                        <article class="sh-card">
+                            <div class="sh-card-time">
+                                <strong>@sale.FinancialDate.ToString("hh:mm tt")</strong>
+                                <span>@sale.DisplayCode</span>
+                            </div>
+                            <div class="sh-card-body">
+                                <strong class="sh-customer-name">@(string.IsNullOrWhiteSpace(sale.AccountName) ? "Walk-In Customer" : sale.AccountName)</strong>
+                                <span class="sh-einvoice-badge @(hasInvoiceStatus ? "sh-einvoice-active" : "sh-einvoice-inactive")">
+                                    e-Invoice: @status
+                                </span>
+                            </div>
+                            <div class="sh-card-amount">RM @sale.TotalAfterTax.ToString("N2")</div>
+                            <div class="sh-card-actions">
+                                <button class="sh-action-btn sh-btn-delete" aria-label="Delete sale" title="Delete" @onclick="() => ConfirmDelete(sale)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                                <button class="sh-action-btn sh-btn-print" aria-label="Print sale" title="Print"
+                                        @onclick="() => PrintSale(sale)" disabled="@isPrinting">
+                                    @if (isPrinting && selectedDocId == sale.DocumentID)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-printer"></i>
+                                    }
+                                </button>
+                                <button class="sh-action-btn sh-btn-whatsapp" aria-label="Send sale by WhatsApp" title="WhatsApp" @onclick="() => OpenWhatsAppPrompt(sale)">
+                                    <i class="bi bi-whatsapp"></i>
+                                </button>
+                                <button class="sh-action-btn sh-btn-einvoice" aria-label="Download sale PDF" title="Download PDF"
+                                        @onclick="() => DownloadPdf(sale)" disabled="@isDownloading">
+                                    @if (isDownloading && selectedDocId == sale.DocumentID)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    }
+                                </button>
+                            </div>
+                        </article>
+                    }
+                }
+            </div>
+
+            <footer class="sh-results-footer">
+                <span>@visibleSales.Count bill@(visibleSales.Count == 1 ? "" : "s")</span>
+                <strong>Total: RM @visibleTotal.ToString("N2")</strong>
+            </footer>
+        </section>
+    </div>
+    @if (showDeleteConfirm && saleToDelete != null)
+    {
+        <div class="sh-modal-overlay" @onclick="CancelDelete">
+            <div class="sh-modal" @onclick:stopPropagation>
+                <div class="sh-modal-icon">
+                    <i class="bi bi-exclamation-triangle" style="color: #f44336;"></i>
+                </div>
+                <div class="sh-modal-title">Confirm Deletion</div>
+                <div class="sh-modal-text">
+                    Are you sure you want to delete invoice <br />
+                    <strong>@saleToDelete.DisplayCode</strong>?
+                </div>
+                <div class="sh-modal-actions">
+                    <button class="sh-modal-btn sh-modal-cancel" @onclick="CancelDelete">Keep Record</button>
+                    <button class="sh-modal-btn sh-modal-confirm"
+                            style="background-color: #f44336;"
+                            @onclick="ExecuteDelete"
+                            disabled="@isLoading">
+                        @if (isLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+
+                            <span>Yes, Delete</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (showWhatsAppModal)
+    {
+        <div class="sh-modal-overlay" @onclick="() => showWhatsAppModal = false">
+            <div class="sh-modal sh-whatsapp-modal" @onclick:stopPropagation>
+
+                <div class="sh-wa-header">
+                    <i class="bi bi-whatsapp sh-wa-icon"></i>
+                    <div class="sh-modal-title">e-Invoice Request (WhatsApp)</div>
+                </div>
+
+                <div class="sh-wa-body">
+                    <div class="sh-wa-field-wrapper">
+                        <label class="sh-wa-label">WhatsApp Number</label>
+                        <div class="sh-wa-input-row">
+                            <i class="bi bi-telephone sh-wa-input-icon"></i>
+                            <input type="tel"
+                                   class="sh-wa-input"
+                                   placeholder="eg. 6012xxxxxxxx"
+                                   @bind="targetPhone"
+                                   @bind:event="oninput" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sh-wa-footer">
+                    <button class="sh-wa-btn sh-wa-cancel" @onclick="() => showWhatsAppModal = false">
+                        Cancel
+                    </button>
+                    <button class="sh-wa-btn sh-wa-send"
+                            @onclick="ProcessWhatsApp"
+                            disabled="@(isProcessing || !IsValidPhoneNumber)">
+                        @if (isProcessing)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span>Sending...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send-fill"></i>
+                            <span>Send</span>
+                        }
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    }
+</div>

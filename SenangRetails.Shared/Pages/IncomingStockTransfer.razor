@@ -1,0 +1,1037 @@
+@page "/incoming-stock-transfer"
+@inherits SenangRetails.Shared.Pages.BasePage
+@implements IDisposable
+@using SenangRetails.Shared.Services
+@using SenangRetails.Shared.Services.InventoryService
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.BranchService
+@using SenangRetails.Shared.Components.Common
+@using SenangRetails.Shared.Components.Inventory
+@using EBI.DM
+@inject IInventoryService InventoryService
+@inject IBranchService BranchService
+@inject AppState AppState
+@inject LocalImageCacheService LocalImageCache
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject SecurityUserService SecurityUserService
+
+<div class="view-body">
+    <div class="header">
+        <div class="left-section">
+            <!-- Mobile Menu Button (visible on mobile) -->
+            <button class="mobile-menu-btn" @onclick="ToggleNav">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <!-- Back Button -->
+            <div class="back-button" @onclick="GoBack">
+                <i class="bi bi-chevron-left"></i>
+                <span>@LangSvc.GetText("Back")</span>
+            </div>
+        </div>
+        <div class="header-title">
+            @if (isEditing)
+            {
+                <div style="display: flex; flex-direction: column; align-items: center; line-height: 1.1;">
+                    <span style="font-size: 14px; font-weight: 700; color: var(--color-primary, #b04e64);">@(LangSvc.CurrentLanguage == "Chinese" ? "编辑调拨单" : LangSvc.CurrentLanguage == "Malay" ? "Edit Pemindahan Stok" : "Edit Stock Transfer")</span>
+                    <span style="font-size: 11px; color: #666; font-weight: 600;">@editingDocNumber</span>
+                </div>
+            }
+            else
+            {
+                <span>@LangSvc.GetText("InventoryStockTransfer")</span>
+            }
+        </div>
+        <div class="top-right-button">
+            <div class="cursor-pointer" @onclick="OpenHistoryModal" style="display: inline-flex; align-items: center; justify-content: center;">
+                <i class="bi bi-clock-history" style="font-size: 20px;"></i>
+            </div>
+        </div>
+    </div>
+
+    @if (!CanViewStockTransfer)
+    {
+        <div class="access-denied-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; text-align: center; padding: 2rem;">
+            <i class="bi bi-shield-lock" style="font-size: 3.5rem; color: #dc3545; margin-bottom: 1rem;"></i>
+            <h3 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text);">@LangSvc.GetText("AccessDenied")</h3>
+            <p style="color: #6c757d; max-width: 450px; font-size: 0.95rem;">@LangSvc.GetText("NoPermissionToViewStockTransfer")</p>
+        </div>
+    }
+    @if (CanViewStockTransfer)
+    {
+
+    @if (isEditing)
+    {
+        <div style="background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px 15px; border-radius: 8px; margin: 10px 15px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; font-weight: 500;">
+            <span>@LangSvc.GetText("InventoryEditingDocument") <strong>@editingDocNumber</strong></span>
+            <button style="padding: 2px 8px; font-size: 0.85em; border: 1px solid #856404; background: transparent; border-radius: 4px; color: #856404; cursor: pointer;" @onclick="CancelEdit">@LangSvc.GetText("InventoryCancelEdit")</button>
+        </div>
+    }
+    
+    <div class="stock-in-dropdown-card custom-shadow-sm">
+        <span>
+            <i class="bi bi-building-up"></i> @LangSvc.GetText("InventoryFromBranch")
+        </span>
+        <div @onclick='() => OpenBranchSelectModal("from")' class="order-button" style="position: relative; z-index: 52;">
+            @(string.IsNullOrEmpty(selectedFromBranchName) ? (LangSvc.CurrentLanguage == "Chinese" ? "选择起始店" : LangSvc.CurrentLanguage == "Malay" ? "Pilih Asal" : "Select Origin") : selectedFromBranchName) <i class="bi bi-chevron-down"></i>
+        </div>
+    </div>
+
+    <div class="stock-in-dropdown-card custom-shadow-sm">
+        <span>
+            <i class="bi bi-building-down"></i> @(LangSvc.CurrentLanguage == "Chinese" ? "目标分店" : LangSvc.CurrentLanguage == "Malay" ? "Ke Cawangan" : "To Branch")
+        </span>
+        <div @onclick='() => OpenBranchSelectModal("to")' class="order-button" style="position: relative; z-index: 51;">
+            @(string.IsNullOrEmpty(selectedToBranchName) ? (LangSvc.CurrentLanguage == "Chinese" ? "选择目的地店" : LangSvc.CurrentLanguage == "Malay" ? "Pilih Destinasi" : "Select Destination") : selectedToBranchName) <i class="bi bi-chevron-down"></i>
+        </div>
+    </div>
+    
+    <div class="stock-in-dropdown-card custom-shadow-sm">
+        <textarea placeholder="@LangSvc.GetText("InventoryRemarks")" @bind="remarks" />
+    </div>
+
+    <div @onclick="OpenAddProductModal" class="stock-in-dropdown-card custom-shadow-sm cursor-pointer mb-15">
+        <span><i class="bi bi-box-seam"></i> @LangSvc.GetText("InventoryAddProduct")</span>
+    </div>
+
+    @if (isLoading)
+    {
+        <div style="display: flex; align-items: center; justify-content: center; padding: 40px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="stock-movement-table custom-shadow-sm">
+            <div class="stock-movement-table-row border-bottom">
+                <span>@LangSvc.GetText("InventoryImage")</span>
+                <span>@LangSvc.GetText("InventoryProduct")</span>
+                <span class="text-align-center">@LangSvc.GetText("InventoryQty")</span>
+                <span class="text-align-right">@LangSvc.GetText("InventoryCost")</span>
+            </div>
+
+            @if (!stockInItems.Any())
+            {
+                <div style="text-align: center; padding: 40px; color: #888;">
+                    <i class="bi bi-box-seam" style="font-size: 2rem; display: block; margin-bottom: 8px; color: #bbb;"></i>
+                    @LangSvc.GetText("InventoryNoProductsStockIn")
+                </div>
+            }
+            else
+            {
+                @foreach (var item in stockInItems)
+                {
+                    <div class="stock-movement-table-row">
+                        <img src="@GetImageUrl(item)" class="stock-in-image" alt="@item.Name" />
+
+                        <div class="stock-in-details">
+                            <span class="stock-in-title">@item.Name</span>
+                            <span class="stock-in-subtitle">RM @item.PurchasePrice.ToString("N2") | @LangSvc.GetText("InventoryStockLabel"): @item.CurrentStock.ToString("N0")</span>
+                        </div>
+
+                        <div class="text-align-center" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px;">
+                            <button class="btn btn-sm btn-light" style="padding: 2px 8px; border-radius: 4px; border: 1px solid #ccc;" @onclick="() => DecrementQty(item)">-</button>
+                            <span class="number-button compact-number-btn" style="min-width: 36px; text-align: center; display: inline-block;" @onclick='() => OpenCalculator(item, "Quantity")'>@item.StockInQuantity</span>
+                            <button class="btn btn-sm btn-light" style="padding: 2px 8px; border-radius: 4px; border: 1px solid #ccc;" @onclick="() => IncrementQty(item)">+</button>
+                        </div>
+
+                        <div class="text-align-right">
+                            <span class="number-button compact-number-btn" @onclick='() => OpenCalculator(item, "Cost")'>@item.StockInCost.ToString("N2")</span>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="delivery-order-total custom-shadow-sm summary-card-container">
+            <div class="side-by-side summary-line">
+                <span class="summary-text">@LangSvc.GetText("InventoryTotalSKU")</span>
+                <span class="summary-value">@TotalSku</span>
+            </div>
+            <div class="side-by-side summary-line">
+                <span class="summary-text">@LangSvc.GetText("InventoryTotalQuantity")</span>
+                <span class="summary-value">@TotalQuantity</span>
+            </div>
+            <div class="side-by-side summary-total-line">
+                <span class="summary-total-text">@LangSvc.GetText("Total") @LangSvc.GetText("InventoryCost")</span>
+                <span class="summary-total-value">RM @TotalCost.ToString("N2")</span>
+            </div>
+
+            <button class="confirm-btn w-100" @onclick="ConfirmStockTransfer">
+                @(isEditing ? (LangSvc.CurrentLanguage == "Chinese" ? "更新库存调拨" : LangSvc.CurrentLanguage == "Malay" ? "Kemas Kini Pemindahan Stok" : "Update Stock Transfer") : (LangSvc.CurrentLanguage == "Chinese" ? "确认库存调拨" : LangSvc.CurrentLanguage == "Malay" ? "Sahkan Pemindahan Stok" : "Confirm Stock Transfer"))
+            </button>
+        </div>
+    }
+
+    <Calculator IsOpen="@isLocalCalculatorOpen"
+                Title="@calculatorType"
+                AllowDecimal="@(calculatorType == "Price" || calculatorType == "Cost")"
+                InitialValue="@calculatorInitialValue"
+                OnSave="HandleCalculatorSave"
+                OnClose="CloseLocalCalculator" />
+
+    <InventoryNotification @bind-IsVisible="isNotificationVisible"
+                           Message="@notificationMessage"
+                           Type="@notificationType" />
+
+    <InventoryAddProductModal IsOpen="@addProductModalIsOpen"
+                              Title="@LangSvc.GetText("InventoryAddProduct")"
+                              OnClose="CloseAddProductModal"
+                              OnProductSelected="HandleProductSelected" />
+
+    <!-- SELECT BRANCH MODAL (TO/FROM) -->
+    <SlideModal IsOpen="@branchModalIsOpen" CssClass="supplier-details-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseBranchSelectModal">
+        <div class="header">
+            <div @onclick="CloseBranchSelectModal" style="cursor: pointer;">
+                <i class="bi bi-x-lg"></i>
+            </div>
+            <div class="header-title">@(LangSvc.CurrentLanguage == "Chinese" ? "选择" + (branchSelectContext == "to" ? "目的" : "原始") + "分店" : LangSvc.CurrentLanguage == "Malay" ? "Pilih Cawangan " + (branchSelectContext == "to" ? "Destinasi" : "Asal") : "Select " + (branchSelectContext == "to" ? "Destination" : "Origin") + " Branch")</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="tool-bar" style="padding: 10px 0;">
+            <div class="search-bar" style="width: 100%;">
+                <i class="bi bi-search"></i>
+                <input class="search-stock-balance" style="width: 100%;" type="text" placeholder="@(LangSvc.CurrentLanguage == "Chinese" ? "搜索分店..." : LangSvc.CurrentLanguage == "Malay" ? "Cari cawangan..." : "Search branches...")" @bind="branchSearchQuery" @bind:event="oninput" />
+            </div>
+        </div>
+        <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+            @foreach (var branch in FilteredBranches)
+            {
+                <div class="option-card custom-shadow-sm cursor-pointer" @onclick="() => SelectBranch(branch)" style="padding: 15px; background: white; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column;">
+                    <span style="font-weight: bold; color: #333;">@branch.Branch</span>
+                    <span style="color: #888; font-size: 0.8em;">ID: @branch.BranchID</span>
+                </div>
+            }
+        </div>
+    </SlideModal>
+
+    <!-- HISTORY MODAL -->
+    <SlideModal IsOpen="@isHistoryModalOpen" CssClass="stock-in-history-modal" ZIndexBackdrop="4000" ZIndexModal="4001" OnClose="CloseHistoryModal">
+        <div class="header" style="border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px;">
+            <div @onclick="CloseHistoryModal" style="cursor: pointer;"><i class="bi bi-x-lg"></i></div>
+            <div class="header-title">@(LangSvc.CurrentLanguage == "Chinese" ? "调拨历史" : LangSvc.CurrentLanguage == "Malay" ? "Sejarah Pemindahan Stok" : "Stock Transfer History")</div>
+            <div style="width: 24px;"></div>
+        </div>
+        <div class="date-filter-row" style="display: flex; gap: 10px; padding: 10px 15px; align-items: center; border-bottom: 1px solid var(--border); margin-bottom: 10px; background-color: #f8f9fa; border-radius: 8px;">
+            <div style="flex: 1;">
+                <label style="font-size: 11px; color: #666; display: block; margin-bottom: 2px; font-weight: 600;">@LangSvc.GetText("InventoryStartDate")</label>
+                <MobileDatePicker @bind-Value="historyStartDate" DateFormat="dd/MM/yyyy" />
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 11px; color: #666; display: block; margin-bottom: 2px; font-weight: 600;">@LangSvc.GetText("InventoryEndDate")</label>
+                <MobileDatePicker @bind-Value="historyEndDate" DateFormat="dd/MM/yyyy" />
+            </div>
+        </div>
+        <div class="history-modal-content" style="flex-grow: 1; overflow-y: auto; padding: 5px 0;">
+            
+            @if (doc_StockTransferForEdit == null || !doc_StockTransferForEdit.Any())
+            {
+                <div style="text-align: center; padding: 40px; color: #888;">
+                    <i class="bi bi-clock-history" style="font-size: 2rem; display: block; margin-bottom: 8px; color: #bbb;"></i>
+                    @(LangSvc.CurrentLanguage == "Chinese" ? "未找到库存调拨历史。" : LangSvc.CurrentLanguage == "Malay" ? "Tiada sejarah pemindahan stok ditemui." : "No stock transfer history found.")
+                </div>
+            }
+            else
+            {
+                @foreach (var entry in doc_StockTransferForEdit)
+                {
+                    var totalQuantity = entry.lstDocumentLine?.Sum(l => l.Quantity) ?? 0;
+                    var totalCost = entry.objDoc_StockTransfer.TotalAfterTax;
+
+                    <div class="history-entry-card custom-shadow-sm cursor-pointer" @onclick="() => EditHistoryEntry(entry)" style="background: white; border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 12px; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                            <div>
+                                <span style="font-weight: bold; color: var(--color-primary, #b04e64); font-size: 0.95em;">@entry.objDoc_StockTransfer.DocumentID</span>
+                                <span style="font-size: 0.8em; color: #888; display: block; margin-top: 2px;">@entry.objDoc_StockTransfer.FinancialDate.ToString("dd/MM/yyyy hh:mm tt")</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="font-size: 0.75em; background-color: #e2f0d9; color: #385723; padding: 3px 8px; border-radius: 12px; font-weight: 600;">@entry.objDoc_StockTransfer.FromBranch ➔ @entry.objDoc_StockTransfer.ToBranch</span>
+                                @if (CanDeleteStockTransfer)
+                                {
+                                    <button class="btn btn-sm text-danger p-0" style="background: none; border: none; cursor: pointer; display: flex; align-items: center;" @onclick="() => ConfirmDeleteStockTransfer(entry)" @onclick:stopPropagation>
+                                        <i class="bi bi-trash" style="font-size: 1.2rem; color: var(--bs-danger, #dc3545);"></i>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                        
+                        <div style="font-size: 0.9em; color: #555; margin-bottom: 10px;">
+                            @if (!string.IsNullOrEmpty(entry.objDoc_StockTransfer.Remarks))
+                            {
+                                <div style="font-style: italic; color: #666; margin-bottom: 6px; background-color: #f8f9fa; padding: 6px; border-radius: 4px; border-left: 3px solid var(--color-primary, #b04e64);">
+                                    @LangSvc.GetText("InventoryRemarks"): @entry.objDoc_StockTransfer.Remarks
+                                </div>
+                            }
+                            
+                            @if (entry.lstDocumentLine != null && entry.lstDocumentLine.Any())
+                            {
+                                <div style="font-weight: 600; font-size: 0.85em; text-transform: uppercase; color: #888; margin-bottom: 4px; margin-top: 8px;">@LangSvc.GetText("InventoryProduct")</div>
+                                @foreach (var item in entry.lstDocumentLine)
+                                {
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.9em; padding: 2px 0;">
+                                        <span>• @item.Description (x@item.Quantity)</span>
+                                        <span>RM @(item.Cost.ToString("N2"))</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        
+                        <div style="border-top: 1px solid #f0f0f0; padding-top: 8px; display: flex; justify-content: space-between; font-size: 0.9em;">
+                            @if (totalQuantity > 0)
+                            {
+                                <span style="color: #666;">@LangSvc.GetText("InventoryTotalQuantity"): <strong>@totalQuantity</strong></span>
+                            }
+                            else
+                            {
+                                <div></div>
+                            }
+                            <span style="color: #333; font-weight: bold;">@LangSvc.GetText("Total"): RM @totalCost.ToString("N2")</span>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+        <button class="confirm-btn w-100" style="background-color: var(--primary-dark, #198754) !important;" @onclick="CloseHistoryModal">
+            @LangSvc.GetText("InventoryCloseHistory")
+        </button>
+    </SlideModal>
+    }
+</div>
+
+@code {
+    private bool CanViewStockTransfer => CheckPermissionForForm("CanView", new[] { "StockTransfer", "Stock Transfer", "IncomingStockTransfer", "Incoming Stock Transfer" });
+    private bool CanAddStockTransfer => CheckPermissionForForm("CanAdd", new[] { "StockTransfer", "Stock Transfer", "IncomingStockTransfer", "Incoming Stock Transfer" });
+    private bool CanEditStockTransfer => CheckPermissionForForm("CanEdit", new[] { "StockTransfer", "Stock Transfer", "IncomingStockTransfer", "Incoming Stock Transfer" });
+    private bool CanDeleteStockTransfer => CheckPermissionForForm("CanDelete", new[] { "StockTransfer", "Stock Transfer", "IncomingStockTransfer", "Incoming Stock Transfer" });
+    private bool CanSearchStockTransfer => CheckPermissionForForm("CanSearch", new[] { "StockTransfer", "Stock Transfer", "IncomingStockTransfer", "Incoming Stock Transfer" });
+
+    private bool CheckPermissionForForm(string actionType, string[] formNames)
+    {
+        if (AppState?.Permissions == null) return true;
+
+        foreach (var name in formNames)
+        {
+            foreach (var kv in AppState.Permissions)
+            {
+                if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    var item = kv.Value;
+                    return actionType switch
+                    {
+                        "CanView" => item.CanViewRecord,
+                        "CanAdd" => item.CanAddRecord,
+                        "CanEdit" => item.CanEditRecord,
+                        "CanDelete" => item.CanDeleteRecord,
+                        "CanSearch" => item.CanSearch,
+                        _ => true
+                    };
+                }
+            }
+        }
+        return true;
+    }
+
+    private void OnPermissionsChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public static List<StockTransferModel> StockTransfers { get; set; } = new()
+    {
+        new StockTransferModel
+        {
+            DocNo = "TRF-00000001",
+            Branch = "Cheras Branch",
+            FromBranch = "Headquarters",
+            Date = new DateTime(2026, 6, 25),
+            Remarks = "Weekly replenishment of items",
+            Items = new List<StockTransferDetailModel>
+            {
+                new StockTransferDetailModel { DocNo = "TRF-00000001", ItemCode = "PROD-001", ItemName = "Eco Water Bottle", Matrix = "Color: Blue, Size: 500ml", Qty = 15 },
+                new StockTransferDetailModel { DocNo = "TRF-00000001", ItemCode = "PROD-002", ItemName = "Wireless Mouse", Matrix = "Color: Black", Qty = 10 }
+            }
+        },
+        new StockTransferModel
+        {
+            DocNo = "TRF-00000002",
+            Branch = "Puchong Branch",
+            FromBranch = "Cheras Branch",
+            Date = new DateTime(2026, 6, 28),
+            Remarks = "Urgent stock redistribution",
+            Items = new List<StockTransferDetailModel>
+            {
+                new StockTransferDetailModel { DocNo = "TRF-00000002", ItemCode = "PROD-003", ItemName = "Ceramic Mug", Matrix = "Design: Floral", Qty = 25 }
+            }
+        }
+    };
+
+    [Parameter] public EventCallback OnToggleNav { get; set; }
+    [Parameter] public bool IsInModal { get; set; } = false;
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private bool isHistoryModalOpen = false;
+    private DateTime _historyStartDate = DateTime.Today.AddDays(-30);
+    private DateTime historyStartDate
+    {
+        get => _historyStartDate;
+        set
+        {
+            if (_historyStartDate != value)
+            {
+                _historyStartDate = value;
+                _ = LoadHistoryFromApiAsync();
+            }
+        }
+    }
+
+    private DateTime _historyEndDate = DateTime.Today.AddDays(1);
+    private DateTime historyEndDate
+    {
+        get => _historyEndDate;
+        set
+        {
+            if (_historyEndDate != value)
+            {
+                _historyEndDate = value;
+                _ = LoadHistoryFromApiAsync();
+            }
+        }
+    }
+
+    private List<EBI.UC.Doc_StockTransfer> doc_StockTransferForEdit = new();
+
+    private bool isEditing = false;
+    private string editingDocNumber = "";
+    private string selectedFromBranchID = "";
+    private string selectedFromBranchName = "";
+    private string selectedToBranchID = "";
+    private string selectedToBranchName = "";
+    private string remarks = "";
+    private bool isLoading = true;
+
+    private List<BranchItem> branches = new();
+    private bool branchModalIsOpen = false;
+    private string branchSelectContext = ""; // "from" or "to"
+    private string branchSearchQuery = "";
+
+    private List<InventoryDM> allItemsList = new();
+    private List<InventoryStockIn.StockInItemDisplay> allAvailableItems = new();
+    private List<InventoryStockIn.StockInItemDisplay> stockInItems = new();
+
+    private bool isNotificationVisible = false;
+    private string notificationMessage = "";
+    private string notificationType = "success";
+
+    private bool addProductModalIsOpen = false;
+
+    private InventoryStockIn.StockInItemDisplay? editingItem;
+    private string calculatorType = "";
+    private bool isLocalCalculatorOpen = false;
+    private double calculatorInitialValue = 0;
+
+    private bool IsSuccessCreating = false;
+
+    // Dynamic calculations
+    private int TotalSku => stockInItems.Count(i => i.StockInQuantity > 0);
+    private decimal TotalQuantity => stockInItems.Sum(i => i.StockInQuantity);
+    private decimal TotalCost => stockInItems.Where(i => i.StockInQuantity > 0).Sum(i => (decimal)i.StockInQuantity * i.StockInCost);
+
+    public class StockTransferHistoryEntry
+    {
+        public string DocNumber { get; set; } = string.Empty;
+        public DateTime Date { get; set; }
+        public string Remarks { get; set; } = string.Empty;
+        public string FromBranch { get; set; } = string.Empty;
+        public string ToBranch { get; set; } = string.Empty;
+        public List<StockTransferHistoryItem> Items { get; set; } = new();
+        public decimal TotalQuantity { get; set; }
+        public decimal TotalCost { get; set; }
+    }
+
+    public class StockTransferHistoryItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string ProductName { get; set; } = string.Empty;
+        public decimal Quantity { get; set; }
+        public decimal Cost { get; set; }
+    }
+
+    private static List<StockTransferHistoryEntry> stockTransferHistory = new()
+    {
+        new StockTransferHistoryEntry
+        {
+            DocNumber = "TRF-2026-0001",
+            Date = DateTime.Now.AddDays(-2),
+            Remarks = "Initial stock transfer",
+            FromBranch = "Headquarters",
+            ToBranch = "Cheras Branch",
+            Items = new()
+            {
+                new StockTransferHistoryItem { ProductName = "Eco Water Bottle", Quantity = 10, Cost = 15.00m }
+            },
+            TotalQuantity = 10,
+            TotalCost = 150.00m
+        }
+    };
+
+    private List<BranchItem> FilteredBranches => string.IsNullOrWhiteSpace(branchSearchQuery)
+        ? branches
+        : branches.Where(b => (b.Branch ?? "").Contains(branchSearchQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnPermissionsChanged += OnPermissionsChanged;
+        await base.OnInitializedAsync();
+
+        // Load branches dynamically from application state
+        if (AppState.AvailableBranches != null && AppState.AvailableBranches.Any())
+        {
+            var branchList = new List<BranchItem>();
+            foreach (var bId in AppState.AvailableBranches)
+            {
+                var (details, _) = await BranchService.GetBranchDetailsAsync(bId);
+                if (details != null && !string.IsNullOrWhiteSpace(details.BranchID))
+                {
+                    branchList.Add(details);
+                }
+            }
+            if (branchList.Any())
+            {
+                branches = branchList;
+            }
+        }
+
+        if (!branches.Any())
+        {
+            branches = new List<BranchItem>
+            {
+                new BranchItem { BranchID = "BR-001", Branch = "Headquarters" },
+                new BranchItem { BranchID = "BR-002", Branch = "Cheras Branch" },
+                new BranchItem { BranchID = "BR-003", Branch = "Puchong Branch" },
+                new BranchItem { BranchID = "BR-004", Branch = "Kuching Branch" },
+                new BranchItem { BranchID = "BR-005", Branch = "Miri Branch" }
+            };
+        }
+
+        // Set defaults
+        selectedToBranchID = AppState.CurrentBranch?.BranchID ?? "";
+        selectedToBranchName = AppState.CurrentBranch?.Branch ?? "";
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var branchId = string.IsNullOrEmpty(selectedFromBranchID) ? AppState.SelectedBranchID : selectedFromBranchID;
+
+            // Load master items
+            allItemsList = await InventoryService.LoadItemsAsync(branchId) ?? new List<InventoryDM>();
+            var productItems = allItemsList.Where(i => i.InventoryTypeID == 1).ToList();
+
+            if (productItems.Any())
+            {
+                // Load stock balances
+                var req = new StockBalanceRequest
+                {
+                    BranchID = branchId,
+                    InventoryIDs = string.Join(",", productItems.Select(p => p.MasterAccountID)),
+                    FinancialDate = DateTime.Today,
+                    EndDate = DateTime.Today,
+                    RedemptionEndDate = DateTime.Today,
+                    NewExpiryDate = DateTime.Today
+                };
+
+                var balances = await InventoryService.GetStockBalanceByBranchAndByItemAsync(req)
+                              ?? new Dictionary<string, StockBalanceItem>();
+
+                allAvailableItems.Clear();
+                foreach (var pi in productItems)
+                {
+                    decimal currentQty = 0;
+                    if (balances.TryGetValue(pi.MasterAccountID ?? string.Empty, out var balItem))
+                    {
+                        currentQty = balItem.ExistingQuantity;
+                    }
+
+                    allAvailableItems.Add(new InventoryStockIn.StockInItemDisplay
+                    {
+                        Id = pi.MasterAccountID ?? string.Empty,
+                        Name = pi.AccountName ?? string.Empty,
+                        CurrentStock = currentQty,
+                        Unit = pi.UnitOfMeasureName ?? pi.UnitOfMeasureID ?? "Unit",
+                        PurchasePrice = pi.PurchasePrice,
+                        ImagePath = pi.ImagePath,
+                        ImageFileName = pi.ImageFileName,
+                        StockInQuantity = 0,
+                        StockInCost = pi.PurchasePrice
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[IncomingStockTransfer] Error loading data: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenBranchSelectModal(string context)
+    {
+        branchSelectContext = context;
+        branchSearchQuery = "";
+        branchModalIsOpen = true;
+    }
+
+    private void CloseBranchSelectModal() => branchModalIsOpen = false;
+
+    private async Task SelectBranch(BranchItem branch)
+    {
+        if (branchSelectContext == "from")
+        {
+            selectedFromBranchID = branch.BranchID ?? "";
+            selectedFromBranchName = branch.Branch ?? "";
+            await LoadDataAsync();
+        }
+        else
+        {
+            selectedToBranchID = branch.BranchID ?? "";
+            selectedToBranchName = branch.Branch ?? "";
+        }
+        branchModalIsOpen = false;
+    }
+
+    private async Task OpenHistoryModal()
+    {
+        await LoadHistoryFromApiAsync();
+        isHistoryModalOpen = true;
+    }
+
+    private void CloseHistoryModal() => isHistoryModalOpen = false;
+
+    private async Task LoadHistoryFromApiAsync()
+    {
+        if (historyStartDate.Date > historyEndDate.Date)
+        {
+            notificationMessage = LangSvc.GetText("StartDateCannotExceedEndDate");
+            notificationType = "danger";
+            isNotificationVisible = true;
+            StateHasChanged();
+            return;
+        }
+        try
+        {
+            var records = await InventoryService.GetAllStockTransferRecordAsync(historyStartDate, historyEndDate, 1, 50);
+
+            try
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(records, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                System.Diagnostics.Debug.WriteLine($"[IncomingStockTransfer] LoadHistoryFromApiAsync - Count: {records?.Count ?? 0}\nData:\n{json}");
+            }
+            catch (Exception jsonEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"[IncomingStockTransfer] LoadHistoryFromApiAsync - Error serializing records: {jsonEx.Message}");
+            }
+
+            doc_StockTransferForEdit = records;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[IncomingStockTransfer] Error loading history from API: {ex.Message}");
+        }
+    }
+
+    private async Task EditHistoryEntry(EBI.UC.Doc_StockTransfer entry)
+    {
+        if (!CanEditStockTransfer)
+        {
+            notificationMessage = LangSvc.GetText("NoPermissionToEditStockTransfer");
+            notificationType = "warning";
+            isNotificationVisible = true;
+            return;
+        }
+
+        isHistoryModalOpen = false;
+        isEditing = true;
+
+        var fullEntry = await InventoryService.GetStockTransferRecordAsync(entry.objDoc_StockTransfer.DocumentID);
+        if (fullEntry != null)
+        {
+            entry = fullEntry;
+        }
+
+        editingDocNumber = entry.objDoc_StockTransfer.DocumentID;
+        remarks = entry.objDoc_StockTransfer.Remarks;
+
+        // Find from branch details
+        var fromB = branches.FirstOrDefault(b => b.Branch == entry.objDoc_StockTransfer.FromBranch || b.BranchID == entry.objDoc_StockTransfer.FromBranch);
+        selectedFromBranchID = fromB?.BranchID ?? entry.objDoc_StockTransfer.FromBranchID;
+        selectedFromBranchName = fromB?.Branch ?? entry.objDoc_StockTransfer.FromBranch;
+
+        // Find to branch details
+        var toB = branches.FirstOrDefault(b => b.Branch == entry.objDoc_StockTransfer.ToBranch || b.BranchID == entry.objDoc_StockTransfer.ToBranch);
+        selectedToBranchID = toB?.BranchID ?? entry.objDoc_StockTransfer.ToBranchID;
+        selectedToBranchName = toB?.Branch ?? entry.objDoc_StockTransfer.ToBranch;
+
+        stockInItems.Clear();
+        foreach (var item in entry.lstDocumentLine)
+        {
+            var matched = allAvailableItems.FirstOrDefault(i => i.Id == item.InventoryItemAccountID);
+            stockInItems.Add(new InventoryStockIn.StockInItemDisplay
+            {
+                Id = item.InventoryItemAccountID,
+                Name = item.Description,
+                CurrentStock = matched?.CurrentStock ?? 0,
+                Unit = matched?.Unit ?? "Unit",
+                PurchasePrice = matched?.PurchasePrice ?? item.UnitPrice,
+                ImagePath = matched?.ImagePath,
+                ImageFileName = matched?.ImageFileName,
+                StockInQuantity = item.Quantity,
+                StockInCost = item.UnitPrice
+            });
+        }
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        isEditing = false;
+        editingDocNumber = "";
+        remarks = "";
+        selectedFromBranchID = "";
+        selectedFromBranchName = "";
+        selectedToBranchID = AppState.CurrentBranch?.BranchID ?? "";
+        selectedToBranchName = AppState.CurrentBranch?.Branch ?? "";
+        stockInItems.Clear();
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDeleteStockTransfer(EBI.UC.Doc_StockTransfer entry)
+    {
+        if (!CanDeleteStockTransfer)
+        {
+            notificationMessage = LangSvc.GetText("NoPermissionToDeleteStockTransfer");
+            notificationType = "warning";
+            isNotificationVisible = true;
+            return;
+        }
+
+        var docId = entry.objDoc_StockTransfer.DocumentID;
+        var confirmMsg = $"{LangSvc.GetText("ProductDeleteConfirmMsg") ?? "Are you sure you want to delete"} {docId}?";
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", confirmMsg);
+        if (confirmed)
+        {
+            try
+            {
+                var response = await InventoryService.DeleteStockTransferAsync(docId);
+                if (response != null && response.statusCode == 200)
+                {
+                    notificationMessage = response.message ?? "Stock Transfer deleted successfully.";
+                    notificationType = "success";
+                    isNotificationVisible = true;
+                    await LoadHistoryFromApiAsync();
+                }
+                else
+                {
+                    notificationMessage = response?.message ?? "Failed to delete Stock Transfer.";
+                    notificationType = "danger";
+                    isNotificationVisible = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[IncomingStockTransfer] Error deleting entry: {ex.Message}");
+                notificationMessage = $"Error: {ex.Message}";
+                notificationType = "danger";
+                isNotificationVisible = true;
+            }
+            finally
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    public void AddProductToStockIn(string masterAccountId)
+    {
+        var existing = stockInItems.FirstOrDefault(i => i.Id == masterAccountId);
+        if (existing != null)
+        {
+            existing.StockInQuantity++;
+        }
+        else
+        {
+            var matched = allAvailableItems.FirstOrDefault(i => i.Id == masterAccountId);
+            if (matched != null)
+            {
+                stockInItems.Add(new InventoryStockIn.StockInItemDisplay
+                {
+                    Id = matched.Id,
+                    Name = matched.Name,
+                    CurrentStock = matched.CurrentStock,
+                    Unit = matched.Unit,
+                    PurchasePrice = matched.PurchasePrice,
+                    ImagePath = matched.ImagePath,
+                    ImageFileName = matched.ImageFileName,
+                    StockInQuantity = 1,
+                    StockInCost = matched.PurchasePrice
+                });
+            }
+        }
+        StateHasChanged();
+    }
+
+    private void OpenAddProductModal() => addProductModalIsOpen = true;
+    private void CloseAddProductModal() => addProductModalIsOpen = false;
+
+    private void HandleProductSelected(string masterAccountId)
+    {
+        addProductModalIsOpen = false;
+        AddProductToStockIn(masterAccountId);
+    }
+
+    private string GetImageUrl(InventoryStockIn.StockInItemDisplay item)
+    {
+        var cached = LocalImageCache.GetImage(item.Id);
+        if (!string.IsNullOrEmpty(cached)) return cached;
+        if (!string.IsNullOrEmpty(item.ImagePath))
+        {
+            return item.ImagePath;
+        }
+        return "https://placehold.co/400";
+    }
+
+    private void IncrementQty(InventoryStockIn.StockInItemDisplay item)
+    {
+        item.StockInQuantity++;
+    }
+
+    private void DecrementQty(InventoryStockIn.StockInItemDisplay item)
+    {
+        if (item.StockInQuantity > 1)
+        {
+            item.StockInQuantity--;
+        }
+        else
+        {
+            stockInItems.Remove(item);
+        }
+    }
+
+    private void OpenCalculator(InventoryStockIn.StockInItemDisplay item, string type)
+    {
+        editingItem = item;
+        calculatorType = type;
+        calculatorInitialValue = type == "Quantity" ? (double)item.StockInQuantity : (double)item.StockInCost;
+        isLocalCalculatorOpen = true;
+    }
+
+    private void CloseLocalCalculator()
+    {
+        isLocalCalculatorOpen = false;
+        editingItem = null;
+    }
+
+    private void HandleCalculatorSave(double value)
+    {
+        if (editingItem != null)
+        {
+            if (calculatorType == "Quantity")
+            {
+                editingItem.StockInQuantity = (int)value;
+                if (editingItem.StockInQuantity < 1)
+                {
+                    stockInItems.Remove(editingItem);
+                }
+            }
+            else if (calculatorType == "Price" || calculatorType == "Cost")
+            {
+                editingItem.StockInCost = (decimal)value;
+            }
+        }
+        isLocalCalculatorOpen = false;
+        editingItem = null;
+    }
+
+    private void ToggleNav()
+    {
+        OnToggleNav.InvokeAsync();
+    }
+
+    private async Task ConfirmStockTransfer()
+    {
+        if (!CanAddStockTransfer)
+        {
+            notificationMessage = LangSvc.GetText("NoPermissionToAddStockTransfer");
+            notificationType = "warning";
+            isNotificationVisible = true;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(selectedFromBranchID))
+        {
+            notificationMessage = "Please select an Origin Branch.";
+            notificationType = "warning";
+            isNotificationVisible = true;
+            return;
+        }
+        if (string.IsNullOrEmpty(selectedToBranchID))
+        {
+            notificationMessage = "Please select a Destination Branch.";
+            notificationType = "warning";
+            isNotificationVisible = true;
+            return;
+        }
+        if (selectedFromBranchID == selectedToBranchID)
+        {
+            notificationMessage = "Origin and Destination branches cannot be the same.";
+            notificationType = "warning";
+            isNotificationVisible = true;
+            return;
+        }
+        if (!stockInItems.Any(i => i.StockInQuantity > 0))
+        {
+            notificationMessage = LangSvc.GetText("InventoryErrorAddAtLeastOne");
+            notificationType = "warning";
+            isNotificationVisible = true;
+            return;
+        }
+
+        var request = new EBI.UC.Doc_StockTransfer();
+
+        var fromBranchObj = branches.FirstOrDefault(b => b.BranchID == selectedFromBranchID);
+        var fromBranchName = fromBranchObj?.Branch ?? selectedFromBranchName;
+        if (string.IsNullOrEmpty(fromBranchName)) fromBranchName = selectedFromBranchID;
+
+        var toBranchObj = branches.FirstOrDefault(b => b.BranchID == selectedToBranchID);
+        var toBranchName = toBranchObj?.Branch ?? selectedToBranchName;
+        if (string.IsNullOrEmpty(toBranchName)) toBranchName = selectedToBranchID;
+
+        request.objDoc_StockTransfer.BranchID = selectedFromBranchID; // The originating branch
+        request.objDoc_StockTransfer.FromBranchID = selectedFromBranchID;
+        request.objDoc_StockTransfer.FromBranch = fromBranchName;
+        request.objDoc_StockTransfer.ToBranchID = selectedToBranchID;
+        request.objDoc_StockTransfer.ToBranch = toBranchName;
+        request.objDoc_StockTransfer.FinancialDate = DateTime.Now;
+        request.objDoc_StockTransfer.Remarks = remarks;
+
+        if (isEditing)
+        {
+            request.objDoc_StockTransfer.DocumentID = editingDocNumber;
+            request.objDoc_StockTransfer.SaveAction = EBI.Enum.EntityState.Changed;
+            request.objDoc_StockTransfer.IsDirty = true;
+        }
+        else
+        {
+            request.objDoc_StockTransfer.SaveAction = EBI.Enum.EntityState.Added;
+        }
+
+        foreach (var item in stockInItems.Where(i => i.StockInQuantity > 0))
+        {
+            InventoryDM masterInventoryItem = allItemsList.FirstOrDefault(i => i.MasterAccountID == item.Id);
+
+            var lineItem = new EBI.DM.DocumentLineTableDM();
+            lineItem.Description = masterInventoryItem?.AccountName ?? item.Name;
+            lineItem.InventoryTypeID = masterInventoryItem?.InventoryTypeID ?? 1;
+            lineItem.InventoryItemAccountID = masterInventoryItem?.MasterAccountID ?? item.Id;
+            lineItem.LineItemID = masterInventoryItem?.MasterAccountID ?? item.Id;
+            lineItem.Quantity = item.StockInQuantity;
+            lineItem.UnitPrice = item.StockInCost;
+            
+            // Fill UnitOfMeasurementID and SKUQuantity according to inventory item specifications
+            lineItem.UnitOfMeasurementID = masterInventoryItem?.UnitOfMeasureID;
+            var uomBase = masterInventoryItem?.UOMBase ?? 0;
+            lineItem.SKUQuantity = uomBase == 0 ? 1 : uomBase;
+
+            lineItem.SaveAction = EBI.Enum.EntityState.Added;
+
+            request.lstDocumentLine.Add(lineItem);
+        }
+
+        try
+        {
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            var requestJson = System.Text.Json.JsonSerializer.Serialize(request, jsonOptions);
+            System.Diagnostics.Debug.WriteLine($"[ConfirmStockTransfer] Stock Transfer Request Body:\n{requestJson}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConfirmStockTransfer] Error serializing Transfer request: {ex.Message}");
+        }
+
+        if (isEditing)
+        {
+            IsSuccessCreating = await InventoryService.UpdateStockTransfer(request);
+        }
+        else
+        {
+            IsSuccessCreating = await InventoryService.CreateStockTransfer(request);
+        }
+
+        if (IsSuccessCreating)
+        {
+            // Add to session history
+            var localItems = stockInItems.Where(i => i.StockInQuantity > 0).Select(i => new StockTransferHistoryItem
+            {
+                Id = i.Id,
+                ProductName = i.Name,
+                Quantity = i.StockInQuantity,
+                Cost = i.StockInCost
+            }).ToList();
+
+            if (isEditing)
+            {
+                stockTransferHistory.RemoveAll(h => h.DocNumber == editingDocNumber);
+            }
+
+            var newEntry = new StockTransferHistoryEntry
+            {
+                DocNumber = isEditing ? editingDocNumber : $"TRF-NEW-{new Random().Next(1000, 9999)}",
+                Date = DateTime.Now,
+                Remarks = remarks,
+                FromBranch = selectedFromBranchName,
+                ToBranch = selectedToBranchName,
+                Items = localItems,
+                TotalQuantity = localItems.Sum(i => i.Quantity),
+                TotalCost = localItems.Sum(i => (decimal)i.Quantity * i.Cost)
+            };
+            stockTransferHistory.Insert(0, newEntry);
+            
+            // Set notification message first
+            notificationMessage = isEditing ? "Stock transfer updated successfully." : "Stock transfer created successfully.";
+            notificationType = "success";
+            isNotificationVisible = true;
+
+            // Clear current items and reset edit mode
+            stockInItems.Clear();
+            remarks = "";
+            isEditing = false;
+            editingDocNumber = "";
+
+            await OnConfirm.InvokeAsync();
+        }
+        else
+        {
+            notificationMessage = isEditing ? "Failed to update stock transfer." : "Failed to create stock transfer.";
+            notificationType = "danger";
+            isNotificationVisible = true;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/home");
+    }
+
+    public void Dispose()
+    {
+        AppState.OnPermissionsChanged -= OnPermissionsChanged;
+    }
+}

@@ -1,0 +1,4231 @@
+@using EBI.DM
+@using EBI.UC
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services
+@using SenangRetails.Shared.Services.InventoryService
+@inject ProductCacheService CacheService
+@inject LocalImageCacheService LocalImageCache
+@inject IInventoryService InventorySvc
+@inject AppState AppState
+@inject IJSRuntime JS
+
+<div class="section-container">
+    <div class="section-header">
+        <div class="header-left">
+            <h2>Promotion Setup</h2>
+            <p>Configure promotional pricing, conditions and applied items.</p>
+        </div>
+        <div class="header-right">
+            <button class="add-btn" @onclick="OpenAddModal">+ Add</button>
+        </div>
+    </div>
+
+    <div class="point-section">
+        <div class="section-title-row-with-action">
+            <h3>Promotion Rules</h3>
+            <span class="rule-count-text">@FilteredPromotions.Count() rule(s)</span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(apiLoadError))
+        {
+            <div class="bc-alert error" style="margin-bottom: 18px;">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span>@apiLoadError</span>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(saveMessage))
+        {
+            <div class="bc-alert success" style="margin-bottom: 18px;">
+                <i class="fa-solid fa-circle-check"></i>
+                <span>@saveMessage</span>
+            </div>
+        }
+
+        <div class="search-toolbar-row promotion-api-toolbar">
+            <div class="staff-search-wrap">
+                <i class="fa-solid fa-magnifying-glass staff-search-icon"></i>
+                <input type="text"
+                       class="staff-search-input"
+                       placeholder="Search promotion by name or code..."
+                       @bind="searchQuery"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <button class="search-clear-btn" @onclick='() => searchQuery = ""'>✕</button>
+                }
+            </div>
+            <select class="form-control promotion-api-filter" @bind="selectedTypeFilter">
+                <option value="">All Promotion Methods</option>
+                <option value="Discount %">Discount %</option>
+                <option value="Fixed Unit Price">Fixed Unit Price</option>
+                <option value="Discount Amt">Discount Amount</option>
+                <option value="Bundled Discount Amt">Bundled Discount Amount</option>
+                <option value="Lumpsum Disc Amt">Lump Sum Discount</option>
+                <option value="Fixed Lumpsum Price">Lump Sum Fixed Price</option>
+                <option value="No Effect">No Effect</option>
+            </select>
+        </div>
+        @if (isLoading)
+        {
+            <div class="empty-state">Loading promotion rules...</div>
+        }
+        else if (!FilteredPromotions.Any())
+        {
+            <div class="empty-state">No promotion rules configured yet.</div>
+        }
+        else
+        {
+            <div class="list-container">
+                <div class="list-header">
+                    <span class="align-left">Code</span>
+                    <span class="align-left">Promotion Name</span>
+                    <span>Method</span>
+                    <span>Value</span>
+                    <span>Condition</span>
+                    <span>Min Qty</span>
+                    <span>Products</span>
+                    <span>Status</span>
+                    <span>Actions</span>
+                </div>
+                @foreach (var promo in FilteredPromotions)
+                {
+                    <div class="list-item" @onclick="() => OpenEditModal(promo)">
+                        <span class="cell-main align-left" data-label="Code"><span class="ps-code-badge">@promo.Code</span></span>
+                        <span class="cell align-left" data-label="Promotion Name"><strong>@promo.Name</strong></span>
+                        <span class="cell align-center" data-label="Method">@promo.PromoMethod</span>
+                        <span class="cell align-center" data-label="Value">@GetPromoRateDisplay(promo)</span>
+                        <span class="cell align-center" data-label="Condition">@promo.PromoCondition</span>
+                        <span class="cell align-center" data-label="Min Qty">@promo.MinQuantity</span>
+                        <span class="cell align-center" data-label="Products">@GetAppliedProductsSummary(promo)</span>
+                        <span class="cell align-center" data-label="Status">
+                            <span class="bc-status-pill @(promo.IsActive ? "active" : "inactive")">
+                                @(promo.IsActive ? "Active" : "Disabled")
+                            </span>
+                        </span>
+                        <span class="cell align-center" data-label="Actions" @onclick:stopPropagation>
+                            <button type="button" class="pt-action-btn" title="Edit" @onclick="() => OpenEditModal(promo)">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                            </button>
+                            <button type="button" class="pt-action-btn pt-delete-btn" title="Delete" @onclick="() => ConfirmDelete(promo)">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- ADD / EDIT PROMOTION MODAL (POINT SETUP STYLE) -->
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-box" style="width: 580px; max-width: 95%;" @onclick:stopPropagation>
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h3 class="modal-title">@(isEditMode ? "Edit Promotion Rule" : "Add Promotion Rule")</h3>
+                <button type="button" class="close-btn" @onclick="CloseModal" aria-label="Close">✕</button>
+            </div>
+
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="form-error">@errorMessage</div>
+                }
+
+                <!-- Section Tabs -->
+                <div class="staff-tab-bar" style="margin-bottom: 20px;">
+                    <button type="button"
+                            class="staff-tab @(activeTab == "GeneralSetup" ? "active" : "")"
+                            @onclick='() => activeTab = "GeneralSetup"'>
+                        General Setup
+                    </button>
+                    <button type="button"
+                            class="staff-tab @(activeTab == "DiscountLimits" ? "active" : "")"
+                            @onclick='() => activeTab = "DiscountLimits"'>
+                        Discount &amp; Limits
+                    </button>
+                    <button type="button"
+                            class="staff-tab @(activeTab == "AppliedProducts" ? "active" : "")"
+                            @onclick='() => activeTab = "AppliedProducts"'>
+                        Applied Products @(currentPromo.AppliedProductIds?.Count > 0 ? $"({currentPromo.AppliedProductIds.Count})" : "")
+                    </button>
+                </div>
+
+                @if (activeTab == "GeneralSetup")
+                {
+                    <!-- InventoryFull.objInventory.MasterAccountID -->
+                    <div class="form-group">
+                        <label class="form-label">Item ID</label>
+                        <input type="text"
+                               class="form-control readonly"
+                               value="@currentPromo.MasterAccountID"
+                               placeholder="Assigned by server after save"
+                               readonly />
+                    </div>
+
+                    <!-- InventoryFull.objInventory.DisplayCode -->
+                    <div class="form-group">
+                        <label class="form-label">Display Code <span class="required">*</span></label>
+                        <input type="text"
+                               class="form-control text-uppercase @(isEditMode ? "readonly" : "")"
+                               placeholder="e.g. PROMO-101"
+                               @bind="currentPromo.Code"
+                               disabled="@isEditMode" />
+                        @if (isEditMode)
+                        {
+                            <span class="field-sub-hint">Display code is unique and locked after creation.</span>
+                        }
+                    </div>
+
+                    <!-- InventoryFull.objInventory.AccountName / IsSold -->
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label class="form-label" style="margin: 0;">Promotion Name <span class="required">*</span></label>
+                            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                                <div class="modal-active-row">
+                                    <input type="checkbox" id="promoIsActive" class="staff-checkbox"
+                                           @bind="currentPromo.IsActive" />
+                                    <label for="promoIsActive" class="staff-checkbox-label">Is Sold</label>
+                                </div>
+                                <div class="modal-active-row">
+                                    <input type="checkbox" id="promoConfirmed" class="staff-checkbox"
+                                           @bind="currentPromo.IsConfirmed" />
+                                    <label for="promoConfirmed" class="staff-checkbox-label">Is Confirmed</label>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="text"
+                               class="form-control"
+                               placeholder="e.g. Happy Hour 20% OFF"
+                               @bind="currentPromo.Name" />
+                    </div>
+
+                    <!-- InventoryFull.objInventory.Remarks -->
+                    <div class="form-group">
+                        <label class="form-label">Remarks / Description</label>
+                        <textarea class="form-control"
+                                  rows="2"
+                                  style="resize: vertical; min-height: 60px;"
+                                  placeholder="Optional promotion notes or terms..."
+                                  @bind="currentPromo.Remarks"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Primary Branch</label>
+                        <select class="form-control"
+                                value="@currentPromo.BranchID"
+                                @onchange="OnPrimaryBranchChanged">
+                            <option value="">Select Branch</option>
+                            @foreach (var branchId in AvailablePromotionBranches)
+                            {
+                                <option value="@branchId">@branchId</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Available Branches</label>
+                        <div class="promotion-branch-options">
+                            @if (!AvailablePromotionBranches.Any())
+                            {
+                                <span class="field-sub-hint">No available branches.</span>
+                            }
+                            else
+                            {
+                                @foreach (var branchId in AvailablePromotionBranches)
+                                {
+                                    <label class="promotion-branch-option">
+                                        <input type="checkbox"
+                                               class="staff-checkbox"
+                                               checked="@IsPromotionBranchAvailable(branchId)"
+                                               @onchange="() => TogglePromotionBranch(branchId)" />
+                                        <span>@branchId</span>
+                                    </label>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    <!-- InventoryFull.objInventory.AvailableDateFrom / AvailableDateTo -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="form-group">
+                            <label class="form-label">Available Date From</label>
+                            <MobileDatePicker @bind-Value="currentPromo.StartDate"
+                                              DateFormat="dd/MM/yyyy"
+                                              Placeholder="Start Date" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Available Date To</label>
+                            <MobileDatePicker @bind-Value="currentPromo.EndDate"
+                                              DateFormat="dd/MM/yyyy"
+                                              Placeholder="End Date" />
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="form-group">
+                            <label class="form-label">Available Time From</label>
+                            <input type="time"
+                                   class="form-control"
+                                   step="1"
+                                   value="@FormatTimeInput(currentPromo.AvailableTimeFrom)"
+                                   @onchange="OnAvailableTimeFromChanged" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Available Time To</label>
+                            <input type="time"
+                                   class="form-control"
+                                   step="1"
+                                   value="@FormatTimeInput(currentPromo.AvailableTimeTo)"
+                                   @onchange="OnAvailableTimeToChanged" />
+                        </div>
+                    </div>
+
+                }
+                else if (activeTab == "DiscountLimits")
+                {
+                    <!-- InventoryFull.objInventory.lstPackage[].PromotionMethod -->
+                    <div class="form-group">
+                        <label class="form-label">Promotion Method <span class="required">*</span></label>
+                        <select class="form-control" @bind="currentPromo.PromoMethod">
+                            <option value="Discount %">Discount % (Percentage)</option>
+                            <option value="Fixed Unit Price">Fixed Unit Price (RM)</option>
+                            <option value="Discount Amt">Discount Amount (RM)</option>
+                            <option value="Bundled Discount Amt">Bundled Discount Amount (RM)</option>
+                            <option value="Lumpsum Disc Amt">Lumpsum Discount Amount (RM)</option>
+                            <option value="Fixed Lumpsum Price">Fixed Lumpsum Price (RM)</option>
+                            <option value="No Effect">No Effect</option>
+                        </select>
+                    </div>
+
+                    <!-- InventoryFull.objInventory.lstPackage[].UnitActualValue -->
+                    <div class="form-group">
+                        <label class="form-label">Unit Actual Value <span class="required">*</span></label>
+                        <div class="ps-input-with-action">
+                            <input type="number"
+                                   step="0.01"
+                                   min="0"
+                                   class="form-control"
+                                   @bind="currentPromo.DiscountValue"
+                                   placeholder="0.00" />
+                            <button type="button"
+                                    class="input-keypad-btn"
+                                    title="Open touch keypad"
+                                    @onclick='() => OpenKeypad("DiscountValue", currentPromo.DiscountValue, "Unit Actual Value")'>
+                                <i class="fa-solid fa-calculator"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Maximum Discount Limit</label>
+                        <input type="number" step="0.01" min="0" class="form-control" @bind="currentPromo.MaxDiscountLimit" />
+                    </div>
+
+                    <!-- InventoryFull.objInventory.lstPackage[].PromoCondition -->
+                    <div class="form-group">
+                        <label class="form-label">Promotion Condition <span class="required">*</span></label>
+                        <select class="form-control" @bind="currentPromo.PromoCondition">
+                            <option value="No Condition">No Condition</option>
+                            <option value="Total Price After Discount, Disc To All Items">Total Price After Discount (Disc To All)</option>
+                            <option value="Total Price After Discount">Total Price After Discount</option>
+                            <option value="Total Quantity Bought, Disc To All Items">Total Quantity Bought (Disc To All)</option>
+                            <option value="Total Quantity Bought">Total Quantity Bought</option>
+                            <option value="Total Price Before Discount, Disc To All Items">Total Price Before Discount (Disc To All)</option>
+                            <option value="Total Price Before Discount">Total Price Before Discount</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Promotion Condition Amount</label>
+                        <input type="number"
+                               step="0.01"
+                               min="0"
+                               class="form-control"
+                               @bind="currentPromo.PromoConditionAmount" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Promotion Priority</label>
+                        <input type="number"
+                               step="1"
+                               min="0"
+                               class="form-control"
+                               @bind="currentPromo.PromoPriority" />
+                    </div>
+
+                    <!-- InventoryFull.objInventory.lstPackage[].RoundingOption -->
+                    <div class="form-group">
+                        <label class="form-label">Rounding Option</label>
+                        <select class="form-control" @bind="currentPromo.Rounding">
+                            <option value="No Rounding">No Rounding</option>
+                            <option value="Round To5Cent">Round To 5 Cents</option>
+                            <option value="Round Up To10Cent">Round Up To 10 Cents</option>
+                            <option value="Round Up To Dollar">Round Up To Dollar</option>
+                            <option value="Round Down To10Cent">Round Down To 10 Cents</option>
+                            <option value="Round Down To Dollar">Round Down To Dollar</option>
+                        </select>
+                    </div>
+
+                    <!-- InventoryFull.objInventory.lstPackage[].Quantity / MaxQuantity -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="form-group">
+                            <label class="form-label">Quantity</label>
+                            <div class="ps-input-with-action">
+                                <input type="number"
+                                       min="1"
+                                       class="form-control"
+                                       @bind="currentPromo.MinQuantity" />
+                                <button type="button"
+                                        class="input-keypad-btn"
+                                        title="Open touch keypad"
+                                        @onclick='() => OpenKeypad("MinQuantity", currentPromo.MinQuantity, "Quantity")'>
+                                    <i class="fa-solid fa-calculator"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Maximum Quantity</label>
+                            <div class="ps-input-with-action">
+                                <input type="number"
+                                       min="0"
+                                       step="1"
+                                       inputmode="numeric"
+                                       class="form-control"
+                                       @bind="currentPromo.MaxLimitPerOrder"
+                                       @bind:event="oninput"
+                                       placeholder="0 (Unlimited)" />
+                                <button type="button"
+                                        class="input-keypad-btn"
+                                        title="Open touch keypad"
+                                        @onclick='() => OpenKeypad("MaxLimitPerOrder", currentPromo.MaxLimitPerOrder, "Maximum Quantity")'>
+                                    <i class="fa-solid fa-calculator"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                }
+                else if (activeTab == "AppliedProducts")
+                {
+                    <div class="ps-picker-container">
+                        <!-- Top Toolbar: Search + Category -->
+                        <div style="display: flex; gap: 8px; margin-bottom: 10px; align-items: center;">
+                            <div class="staff-search-wrap" style="flex: 1;">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text"
+                                       class="staff-search-input"
+                                       placeholder="Search products..."
+                                       @bind="prodSearchQuery"
+                                       @bind:event="oninput" />
+                                @if (!string.IsNullOrEmpty(prodSearchQuery))
+                                {
+                                    <button type="button" class="staff-search-clear" @onclick='() => prodSearchQuery = ""'>✕</button>
+                                }
+                            </div>
+                            <select class="form-control" style="width: 150px; padding: 10px 12px;" @bind="prodCategoryFilter">
+                                <option value="">All Categories</option>
+                                @foreach (var cat in availableCategories)
+                                {
+                                    <option value="@cat">@cat</option>
+                                }
+                            </select>
+                        </div>
+
+                        <!-- Quick Selection Stats & Action Buttons -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 4px 2px;">
+                            <span style="font-size: 13px; font-weight: 600; color: #555;">
+                                <strong style="color: var(--color-primary, #f2600c);">@(currentPromo.AppliedProductIds?.Count ?? 0)</strong> items selected
+                            </span>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" class="btn-picker-action" @onclick="SelectAllFilteredProducts">
+                                    Select All (@FilteredProductsForPicker.Count())
+                                </button>
+                                @if (currentPromo.AppliedProductIds != null && currentPromo.AppliedProductIds.Any())
+                                {
+                                    <button type="button" class="btn-picker-action danger" @onclick="ClearAllProducts">
+                                        Clear All
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Product List -->
+                        <div class="ps-prod-scroll-list">
+                            @if (!FilteredProductsForPicker.Any())
+                            {
+                                <div style="text-align: center; padding: 30px 10px; color: #888;">
+                                    <i class="fa-solid fa-box-open" style="font-size: 2rem; color: #ccc; margin-bottom: 8px; display: block;"></i>
+                                    <span>No products found matching filter.</span>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var prod in FilteredProductsForPicker)
+                                {
+                                    var isChecked = !string.IsNullOrEmpty(prod.MasterAccountID) && currentPromo.AppliedProductIds.Any(id => string.Equals(id?.Trim(), prod.MasterAccountID.Trim(), StringComparison.OrdinalIgnoreCase));
+                                    var imgUrl = GetDisplayImageUrl(prod);
+
+                                    <div class="ps-prod-item @(isChecked ? "selected" : "")"
+                                         @onclick="() => ToggleProductSelection(prod.MasterAccountID)">
+                                        <div class="custom-tick-checkbox @(isChecked ? "checked" : "")" style="flex-shrink: 0;">
+                                            @if (isChecked)
+                                            {
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                            }
+                                        </div>
+
+                                        @if (!string.IsNullOrEmpty(imgUrl))
+                                        {
+                                            <img src="@imgUrl" alt="@prod.AccountName" class="ps-prod-img" />
+                                        }
+                                        else
+                                        {
+                                            <div class="ps-prod-img-placeholder">
+                                                <i class="fa-solid fa-box"></i>
+                                            </div>
+                                        }
+
+                                        <div style="flex: 1; min-width: 0;">
+                                            <div style="font-size: 13.5px; font-weight: 600; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                                @prod.AccountName
+                                            </div>
+                                            <div style="display: flex; gap: 8px; align-items: center; margin-top: 2px;">
+                                                @if (!string.IsNullOrEmpty(prod.ItemGroupName))
+                                                {
+                                                    <span class="ps-badge-tag">@prod.ItemGroupName</span>
+                                                }
+                                                <span style="font-size: 12px; color: #888;">RM @prod.SalesPrice.ToString("N2")</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (isEditMode)
+                {
+                    <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid #f0f0f0;">
+                        <button type="button" class="btn-delete-row" @onclick="() => ConfirmDelete(currentPromo)">
+                            <i class="fa-solid fa-trash-can" style="margin-right: 6px;"></i> Delete Promotion Rule
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <!-- Modal Footer (Matching Staff & Point Setup style) -->
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" @onclick="CloseModal">Cancel</button>
+                <button type="button" class="btn-save" @onclick="SavePromo" disabled="@isSaving">
+                    @(isSaving ? "Saving..." : "Save")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+
+<!-- TOUCH CALCULATOR KEYPAD MODAL -->
+@if (showKeypad)
+{
+    <div class="modal-overlay" @onclick="CloseKeypad">
+        <div class="touch-keypad-modal" @onclick:stopPropagation>
+            <div class="keypad-header">
+                <span class="keypad-title">Enter @keypadTitle</span>
+                <span class="keypad-display">@keypadValueString</span>
+            </div>
+            <div class="keypad-grid">
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("7")'>7</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("8")'>8</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("9")'>9</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadClear">CE</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("4")'>4</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("5")'>5</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("6")'>6</button>
+                <button type="button" class="kp-btn kp-action" @onclick="KeypadBackspace">⌫</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("1")'>1</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("2")'>2</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("3")'>3</button>
+                <button type="button" class="kp-btn kp-cancel" @onclick="CloseKeypad">Cancel</button>
+
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("0")'>0</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend("00")'>00</button>
+                <button type="button" class="kp-btn" @onclick='() => KeypadAppend(".")'>.</button>
+                <button type="button" class="kp-btn kp-submit" @onclick="KeypadSave">OK</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- DELETE CONFIRMATION MODAL -->
+@if (showDeleteModal && promoToDelete != null)
+{
+    <div class="modal-overlay" @onclick="() => showDeleteModal = false">
+        <div class="modal-container ps-del-modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <div class="ps-del-header-left">
+                    <div class="ps-del-icon-badge">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <h3 class="ps-modal-title" style="color: #DC2626;">Confirm Deletion</h3>
+                        <span class="ps-modal-sub">This action cannot be undone.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <p style="margin: 0; font-size: 0.95rem; color: #334155; line-height: 1.5;">
+                    Are you sure you want to delete promotion
+                    <strong style="color: #0F172A; font-weight: 700;">@promoToDelete.Name</strong> (<span style="font-family: monospace;">@promoToDelete.Code</span>)?
+                </p>
+            </div>
+            <div class="prod-modal-footer">
+                <button class="prod-modal-cancel-btn touch-target" @onclick="() => showDeleteModal = false">Cancel</button>
+                <button class="prod-modal-save-btn touch-target" style="background: #DC2626;" @onclick="ExecuteDelete">Delete Promotion</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    /* ══════════════════════════════════════════════════
+       POINT SETUP PAGE UI STYLING
+       ══════════════════════════════════════════════════ */
+    .section-container {
+        padding: 20px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 0.875rem; /* 14px base */
+        padding: clamp(0px, 4vw, 18px) clamp(16px, 4vw, 34px);
+    }
+
+    .section-header {
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-left h2 {
+        font-size: 1.25rem; /* 20px */
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .header-left p {
+        color: #888;
+        font-size: 0.875rem; /* 14px */
+        margin: 5px 0 0;
+    }
+
+    .header-right {
+        flex-shrink: 0;
+    }
+
+    .point-section {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+    }
+
+    .section-title-row-with-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 20px;
+    }
+
+    .section-title-row-with-action h3 {
+        font-size: 1rem; /* 16px */
+        font-weight: 600;
+        color: #222;
+        margin: 0;
+    }
+
+    .rule-count-text {
+        font-size: 0.8125rem;
+        color: #888;
+    }
+
+    .add-btn {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border: none;
+        padding: 8px 20px;
+        border-radius: 8px;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .add-btn:hover {
+        transform: translateY(-1px);
+        opacity: 0.95;
+    }
+
+    .search-toolbar-row {
+        margin-bottom: 18px;
+    }
+
+    .staff-search-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 420px;
+    }
+
+    .staff-search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #888;
+        font-size: 14px;
+    }
+
+    .staff-search-input {
+        width: 100%;
+        padding: 9px 36px 9px 34px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 13.5px;
+        font-family: inherit;
+        background: white;
+        box-sizing: border-box;
+    }
+
+    .staff-search-input:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .search-clear-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .empty-state {
+        font-size: 0.75rem; /* 12px */
+        color: #bbb;
+        padding: 20px 0;
+        text-align: center;
+    }
+
+    /* List table - Desktop view */
+    .list-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .list-header {
+        display: grid;
+        grid-template-columns: 1fr 1.8fr 1.1fr 1.1fr 0.8fr 1fr 1.2fr 0.8fr 0.8fr;
+        padding: 12px 0;
+        font-size: 0.875rem; /* 14px */
+        font-weight: 600;
+        color: #333;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .list-item {
+        display: grid;
+        grid-template-columns: 1fr 1.8fr 1.1fr 1.1fr 0.8fr 1fr 1.2fr 0.8fr 0.8fr;
+        padding: 16px 0;
+        background: white;
+        border-bottom: 1px solid #eee;
+        align-items: center;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+
+    .list-item:hover {
+        background-color: #fafafa;
+    }
+
+    .cell-main {
+        font-weight: 600;
+        color: #333;
+    }
+
+    .cell {
+        color: #555;
+    }
+
+    .align-left { text-align: left; }
+    .align-center { text-align: center; }
+    .align-right { text-align: right; }
+
+    /* Action buttons */
+    .pt-action-btn {
+        background: transparent;
+        border: none;
+        color: #64748B;
+        cursor: pointer;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        transition: all 0.15s;
+    }
+
+    .pt-action-btn:hover {
+        background: #F1F5F9;
+        color: var(--color-primary, #F2600C);
+    }
+
+    .pt-delete-btn:hover {
+        background: #FEF2F2;
+        color: #DC2626;
+    }
+
+    .ps-code-badge {
+        display: inline-block;
+        padding: 0;
+        background: transparent;
+        color: #334155;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        font-weight: 700;
+        font-family: monospace;
+        font-size: 0.85rem;
+        letter-spacing: 0;
+    }
+
+    .bc-format-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px;
+        background: #F1F5F9;
+        color: #475569;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .bc-status-pill {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .bc-status-pill.active {
+        background: #DCFCE7;
+        color: #166534;
+    }
+
+    .bc-status-pill.inactive {
+        background: #F1F5F9;
+        color: #64748B;
+    }
+
+    .bc-alert {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    .bc-alert.success {
+        background: #F0FDF4;
+        border: 1px solid #BBF7D0;
+        color: #166534;
+    }
+
+    .bc-alert.error {
+        background: #FEF2F2;
+        border: 1px solid #FECACA;
+        color: #991B1B;
+    }
+
+    /* ══════════════════════════════════════════════════
+       MODAL STYLING
+       ══════════════════════════════════════════════════ */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
+    }
+
+    .modal-container {
+        background: white;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 900px;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        overflow: hidden;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #eee;
+        background: #FAFAFA;
+    }
+
+    .ps-modal-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .ps-modal-icon-badge {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: #FFF7ED;
+        color: var(--color-primary, #F2600C);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+
+    .ps-modal-title {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1E293B;
+    }
+
+    .ps-modal-sub {
+        font-size: 0.8rem;
+        color: #64748B;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        color: #94A3B8;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+
+    .close-btn:hover {
+        background: #F1F5F9;
+        color: #334155;
+    }
+
+    .modal-body {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .ps-grid-2col {
+        display: grid;
+        grid-template-columns: 1.1fr 1fr;
+        gap: 16px;
+    }
+
+    .ps-col {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .ps-section-box {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .ps-section-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #E2E8F0;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .form-label {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .form-label .required {
+        color: #EF4444;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        box-sizing: border-box;
+        background: white;
+        font-family: inherit;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .form-control.readonly {
+        background: #F1F5F9;
+        cursor: not-allowed;
+    }
+
+    .text-uppercase { text-transform: uppercase; }
+    .text-mono { font-family: monospace; }
+
+    .ps-field-hint {
+        font-size: 0.75rem;
+        color: #64748B;
+    }
+
+    .touch-pill-group {
+        display: flex;
+        gap: 8px;
+    }
+
+    .touch-pill {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #CBD5E1;
+        background: white;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .touch-pill.active {
+        background: #FFF7ED;
+        border-color: var(--color-primary, #F2600C);
+        color: var(--color-primary, #F2600C);
+        font-weight: 600;
+    }
+
+    .picker-field {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: white;
+        border: 1px solid #CBD5E1;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .picker-field:hover {
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .picker-field-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .picker-icon {
+        color: #64748B;
+        font-size: 0.9rem;
+    }
+
+    .picker-value {
+        font-weight: 600;
+        color: #1E293B;
+    }
+
+    .picker-tap-btn {
+        font-size: 0.8rem;
+        color: var(--color-primary, #F2600C);
+        font-weight: 500;
+    }
+
+    .ps-grid-2col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .ps-toggle-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        background: white;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .ps-toggle-card.checked {
+        border-color: var(--color-primary, #F2600C);
+        background: #FFFBF7;
+    }
+
+    .ps-toggle-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .ps-toggle-left i {
+        color: #64748B;
+    }
+
+    .ps-toggle-title {
+        display: block;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #1E293B;
+    }
+
+    .ps-toggle-desc {
+        display: block;
+        font-size: 0.75rem;
+        color: #64748B;
+    }
+
+    .custom-checkbox {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--color-primary, #F2600C);
+        cursor: pointer;
+    }
+
+    /* Product Picker section */
+    .ps-picker-section {
+        max-height: 520px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .ps-picker-header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .ps-picker-counter {
+        font-size: 0.75rem;
+        color: #64748B;
+    }
+
+    .ps-picker-quick-actions {
+        display: flex;
+        gap: 6px;
+    }
+
+    .ps-picker-quick-btn {
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid #CBD5E1;
+        background: white;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+
+    .ps-picker-quick-btn.danger {
+        color: #DC2626;
+        border-color: #FECACA;
+    }
+
+    .ps-picker-filter-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 4px;
+    }
+
+    .ps-picker-search-wrap {
+        position: relative;
+        flex: 1;
+    }
+
+    .ps-picker-search-wrap i {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94A3B8;
+        font-size: 0.8rem;
+    }
+
+    .ps-picker-search {
+        width: 100%;
+        padding: 6px 10px 6px 30px;
+        border: 1px solid #CBD5E1;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        box-sizing: border-box;
+    }
+
+    .ps-picker-cat {
+        padding: 6px 10px;
+        border: 1px solid #CBD5E1;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        max-width: 130px;
+    }
+
+    .ps-picker-list {
+        overflow-y: auto;
+        max-height: 380px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 6px;
+        padding-right: 4px;
+    }
+
+    .ps-prod-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        background: white;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .ps-prod-card:hover {
+        border-color: #CBD5E1;
+    }
+
+    .ps-prod-card.selected {
+        border-color: var(--color-primary, #F2600C);
+        background: #FFFDFB;
+    }
+
+    .ps-prod-check-badge i {
+        color: #CBD5E1;
+        font-size: 1.1rem;
+    }
+
+    .ps-prod-card.selected .ps-prod-check-badge i {
+        color: var(--color-primary, #F2600C);
+    }
+
+    .ps-prod-thumb {
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        object-fit: cover;
+    }
+
+    .ps-prod-thumb-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        background: #F1F5F9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #94A3B8;
+    }
+
+    .ps-prod-details {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .ps-prod-title {
+        display: block;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #1E293B;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .ps-prod-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 2px;
+    }
+
+    .ps-cat-tag {
+        font-size: 0.7rem;
+        background: #F1F5F9;
+        color: #475569;
+        padding: 1px 6px;
+        border-radius: 4px;
+    }
+
+    .ps-orig-price {
+        font-size: 0.75rem;
+        color: #64748B;
+        font-weight: 600;
+    }
+
+    .prod-modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 20px;
+        border-top: 1px solid #eee;
+        background: #FAFAFA;
+    }
+
+    .prod-modal-cancel-btn {
+        padding: 9px 18px;
+        border-radius: 8px;
+        border: 1px solid #CBD5E1;
+        background: white;
+        color: #475569;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+    }
+
+    .prod-modal-cancel-btn.text-danger {
+        color: #DC2626;
+        border-color: #FECACA;
+        margin-right: auto;
+    }
+
+    .prod-modal-save-btn {
+        padding: 9px 22px;
+        border-radius: 8px;
+        border: none;
+        background: var(--color-primary, #F2600C);
+        color: white;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .prod-modal-save-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    /* Keypad Modal */
+    .touch-keypad-modal {
+        background: white;
+        border-radius: 16px;
+        width: 320px;
+        padding: 16px;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+    }
+    .keypad-header {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 14px;
+        background: #F8FAFC;
+        padding: 12px;
+        border-radius: 10px;
+        text-align: right;
+    }
+    .keypad-title { font-size: 0.75rem; color: #64748B; text-align: left; }
+    .keypad-display { font-size: 1.5rem; font-weight: 700; font-family: monospace; color: #0F172A; }
+    .keypad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .kp-btn {
+        padding: 14px 0;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        background: white;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.1s;
+    }
+    .kp-btn:hover { background: #F1F5F9; }
+    .kp-action { background: #F1F5F9; color: #475569; }
+    .kp-cancel { background: #FEE2E2; color: #DC2626; font-size: 0.85rem; }
+    .kp-submit { background: var(--color-primary, #F2600C); color: white; font-size: 0.95rem; }
+
+    /* Delete modal */
+    .ps-del-modal { max-width: 440px; }
+    .ps-del-header-left { display: flex; align-items: center; gap: 12px; }
+    .ps-del-icon-badge {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: #FEF2F2;
+        color: #DC2626;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+
+    /* ══════════════════════════════════════════════════
+       RESPONSIVE MOBILE CARDS
+       ══════════════════════════════════════════════════ */
+    @@media (max-width: 768px) {
+        .section-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .header-right {
+            width: 100%;
+        }
+
+        .header-right .add-btn {
+            width: 100%;
+            text-align: center;
+            padding: 12px;
+        }
+
+        .point-section {
+            padding: 15px;
+        }
+
+        .list-header {
+            display: none;
+        }
+
+        .list-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            background: #FAFAFA;
+        }
+
+        .cell, .cell-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            text-align: right !important;
+            font-size: 0.8125rem;
+        }
+
+        .cell::before, .cell-main::before {
+            content: attr(data-label);
+            font-weight: 600;
+            color: #888;
+            text-align: left;
+            padding-right: 10px;
+        }
+
+        .cell[data-label="Actions"] {
+            justify-content: flex-end;
+            padding-top: 8px;
+            border-top: 1px dashed #eee;
+        }
+
+        .cell[data-label="Actions"]::before {
+            display: none;
+        }
+
+        .ps-grid-2col {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* ========================================================================= */
+    /* CLEAN PROMOTION MODAL STYLING (MATCHING POINT & STAFF SETUP)              */
+    /* ========================================================================= */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(2px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1050;
+        padding: 16px;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 16px;
+        width: 580px;
+        max-width: 95%;
+        max-height: 90vh;
+        max-height: 90dvh;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .modal-header {
+        padding: 20px 24px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1a1a1a;
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 20px;
+        color: #888;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+        line-height: 1;
+        transition: 0.15s;
+    }
+
+    .close-btn:hover {
+        background: #f0f0f0;
+        color: #111;
+    }
+
+    .modal-body {
+        padding: 20px 24px;
+        overflow-y: auto;
+        flex: 1;
+        box-sizing: border-box;
+    }
+
+    .modal-footer {
+        padding: 16px 24px;
+        display: flex;
+        gap: 12px;
+        border-top: 1px solid #f0f0f0;
+        flex-shrink: 0;
+    }
+
+    .btn-cancel {
+        flex: 1;
+        padding: 13px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        background: white;
+        font-size: 15px;
+        font-weight: 600;
+        color: #444;
+        cursor: pointer;
+        transition: 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-cancel:hover {
+        background: #f5f5f5;
+    }
+
+    .btn-save {
+        flex: 1;
+        padding: 13px;
+        border: none;
+        border-radius: 10px;
+        background-color: var(--color-primary, #F2600C);
+        color: white;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        font-family: inherit;
+        text-align: center;
+    }
+
+    .btn-save:hover {
+        opacity: 0.88;
+    }
+
+    .btn-save:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Form controls */
+    .form-group {
+        margin-bottom: 18px;
+    }
+
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+    }
+
+    .required {
+        color: var(--color-primary, #F2600C);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        font-size: 14px;
+        font-family: inherit;
+        box-sizing: border-box;
+        color: #222;
+        transition: border-color 0.2s;
+        background: white;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .form-control.readonly {
+        background: #f5f5f5;
+        color: #888;
+        cursor: not-allowed;
+    }
+
+    .field-sub-hint {
+        display: block;
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+    }
+
+    .form-error {
+        background: #fff0f0;
+        border: 1px solid #ffcdd2;
+        color: #c62828;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+
+    /* Active Row & Checkbox */
+    .modal-active-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .staff-checkbox {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 18px;
+        height: 18px;
+        border: 1.5px solid #ccc;
+        border-radius: 5px;
+        background-color: white;
+        cursor: pointer;
+        position: relative;
+        flex-shrink: 0;
+        transition: border-color 0.2s;
+        margin: 0;
+    }
+
+    .staff-checkbox:checked {
+        background-color: var(--color-primary, #F2600C);
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .staff-checkbox:checked::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 1px;
+        width: 5px;
+        height: 10px;
+        border: solid white;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+
+    .staff-checkbox-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #555;
+        cursor: pointer;
+        margin: 0;
+    }
+
+    /* Staff Tab Bar (Pills) */
+    .staff-tab-bar {
+        display: flex;
+        gap: 8px;
+    }
+
+    .staff-tab {
+        padding: 8px 18px;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 20px;
+        font-size: 13.5px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: #666;
+        font-family: inherit;
+    }
+
+    .staff-tab:hover:not(.active) {
+        background: #f5f5f5;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    .staff-tab.active {
+        background: var(--color-primary, #F2600C);
+        color: white;
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    /* Input with Keypad button */
+    .ps-input-with-action {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 100%;
+    }
+
+    .ps-input-with-action .form-control {
+        padding-right: 46px;
+    }
+
+    .input-keypad-btn {
+        position: absolute;
+        right: 8px;
+        background: #f5f5f5;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .input-keypad-btn:hover {
+        background: #eee;
+        color: var(--color-primary, #F2600C);
+        border-color: var(--color-primary, #F2600C);
+    }
+
+    /* Applied Products Tab Styles */
+    .ps-picker-container {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .btn-picker-action {
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        background: white;
+        color: #444;
+        cursor: pointer;
+        transition: 0.15s;
+    }
+
+    .btn-picker-action:hover {
+        background: #f5f5f5;
+        border-color: #ccc;
+    }
+
+    .btn-picker-action.danger {
+        color: #d32f2f;
+        border-color: #ffcdd2;
+        background: #fff5f5;
+    }
+
+    .btn-picker-action.danger:hover {
+        background: #ffebee;
+    }
+
+    .ps-prod-scroll-list {
+        max-height: 340px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-right: 4px;
+    }
+
+    .ps-prod-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid #eee;
+        border-radius: 10px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .ps-prod-item:hover {
+        border-color: #ddd;
+        background: #fafafa;
+    }
+
+    .ps-prod-item.selected {
+        border-color: var(--color-primary, #F2600C);
+        background: #FFFBF7;
+    }
+
+    .ps-prod-img {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        object-fit: cover;
+        flex-shrink: 0;
+    }
+
+    .ps-prod-img-placeholder {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        background: #f5f5f5;
+        color: #bbb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 16px;
+    }
+
+    .ps-badge-tag {
+        font-size: 11px;
+        background: #f0f0f0;
+        color: #666;
+        padding: 2px 7px;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+
+    .promotion-branch-options {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px 12px;
+        max-height: 150px;
+        overflow-y: auto;
+        padding: 8px 10px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    .promotion-branch-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 30px;
+        color: #333;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    @@media (max-width: 520px) {
+        .promotion-branch-options {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .btn-delete-row {
+        width: 100%;
+        padding: 10px;
+        border: 1.5px solid #ffcdd2;
+        border-radius: 10px;
+        background: #fff5f5;
+        color: #d32f2f;
+        font-size: 13.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: inherit;
+    }
+
+    .btn-delete-row:hover {
+        background: #ffebee;
+        border-color: #ef5350;
+    }
+
+</style>
+
+
+<RetailSetupPageStyle />
+
+<style>
+    .api-promotion-list {
+        border: 1px solid #dfe4ea;
+        border-radius: 6px;
+        overflow: hidden;
+        background: #fff;
+    }
+
+    .api-promotion-header,
+    .api-promotion-row {
+        display: grid;
+        grid-template-columns: minmax(190px, 1.6fr) minmax(170px, 1.35fr) minmax(90px, .75fr) 72px 100px 32px;
+        gap: 14px;
+        align-items: center;
+    }
+
+    .api-promotion-header {
+        padding: 11px 14px;
+        background: #f7f8fa;
+        border-bottom: 1px solid #dfe4ea;
+        color: #596579;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .api-promotion-row {
+        width: 100%;
+        min-height: 68px;
+        padding: 12px 14px;
+        border: 0;
+        border-bottom: 1px solid #e7ebf0;
+        background: #fff;
+        color: #1d2635;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .api-promotion-row:last-child {
+        border-bottom: 0;
+    }
+
+    .api-promotion-row:hover {
+        background: #fafbfc;
+    }
+
+    .api-promotion-name {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .api-promotion-name strong,
+    .api-promotion-name small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .api-promotion-name small,
+    .api-detail-code {
+        color: #718096;
+        font-size: 12px;
+    }
+
+    .api-mono {
+        overflow-wrap: anywhere;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+    }
+
+    .api-count {
+        display: inline-flex;
+        width: 30px;
+        height: 30px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #d8dee7;
+        border-radius: 50%;
+        background: #f8fafc;
+        font-weight: 700;
+    }
+
+    .api-row-action {
+        color: #8090a5;
+        text-align: right;
+    }
+
+    .api-detail-modal {
+        width: min(980px, 94vw);
+        max-height: 90vh;
+    }
+
+    .api-detail-body {
+        overflow-y: auto;
+    }
+
+    .api-field-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-top: 1px solid #e3e7ed;
+        border-left: 1px solid #e3e7ed;
+    }
+
+    .api-field-grid > div {
+        display: flex;
+        min-width: 0;
+        min-height: 64px;
+        flex-direction: column;
+        gap: 5px;
+        padding: 10px 12px;
+        border-right: 1px solid #e3e7ed;
+        border-bottom: 1px solid #e3e7ed;
+    }
+
+    .api-field-grid span {
+        color: #718096;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .api-field-grid strong {
+        overflow-wrap: anywhere;
+        color: #1d2635;
+        font-size: 13px;
+    }
+
+    .api-rule-heading,
+    .api-rule-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .api-rule-heading {
+        margin: 24px 0 10px;
+    }
+
+    .api-rule-heading h4 {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    .api-rule-heading > span {
+        color: #718096;
+        font-size: 12px;
+    }
+
+    .api-rule-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .api-rule-card {
+        border: 1px solid #dfe4ea;
+        border-radius: 6px;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    .api-rule-title {
+        padding: 12px 14px;
+        border-bottom: 1px solid #e3e7ed;
+        background: #f8f9fb;
+    }
+
+    .api-rule-title > div {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .api-rule-title small {
+        color: #718096;
+    }
+
+    .api-rule-fields {
+        border: 0;
+    }
+
+    .api-empty-rules {
+        min-height: 120px;
+    }
+
+    @@media (max-width: 760px) {
+        .api-promotion-header {
+            display: none;
+        }
+
+        .api-promotion-row {
+            grid-template-columns: minmax(0, 1fr) 24px;
+            gap: 9px 12px;
+            padding: 13px;
+        }
+
+        .api-promotion-row > span:not(.api-promotion-name):not(.api-row-action) {
+            display: flex;
+            grid-column: 1 / -1;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .api-promotion-row > span:not(.api-promotion-name):not(.api-row-action)::before {
+            content: attr(data-label);
+            color: #718096;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .api-promotion-name {
+            grid-column: 1;
+        }
+
+        .api-row-action {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .api-field-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .api-detail-modal {
+            width: calc(100vw - 20px);
+            max-height: calc(100vh - 20px);
+        }
+    }
+</style>
+
+<style>
+    .promotion-setup-page {
+        width: 100%;
+        max-width: 1320px;
+        margin: 0 auto;
+    }
+
+    .promotion-refresh-btn {
+        display: inline-flex;
+        width: 42px;
+        height: 42px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #d9dfe7;
+        border-radius: 6px;
+        background: #fff;
+        color: #263244;
+        cursor: pointer;
+        font-size: 15px;
+    }
+
+    .promotion-refresh-btn:hover {
+        border-color: var(--color-primary, #f2600c);
+        color: var(--color-primary, #f2600c);
+    }
+
+    .promotion-refresh-btn:disabled {
+        cursor: wait;
+        opacity: .55;
+    }
+
+    .promotion-list-panel {
+        overflow: hidden;
+        padding: 0;
+        border-color: #dfe4ea;
+        border-radius: 6px;
+    }
+
+    .promotion-alert {
+        margin: 16px 16px 0;
+    }
+
+    .promotion-toolbar {
+        display: flex;
+        min-height: 66px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 16px;
+        border-bottom: 1px solid #e5e9ef;
+        background: #fff;
+    }
+
+    .promotion-search {
+        max-width: 440px;
+    }
+
+    .promotion-result-count {
+        flex-shrink: 0;
+        color: #667085;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .promotion-state {
+        display: flex;
+        min-height: 260px;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 8px;
+        color: #667085;
+        text-align: center;
+    }
+
+    .promotion-state > i {
+        margin-bottom: 4px;
+        color: #98a2b3;
+        font-size: 25px;
+    }
+
+    .promotion-state strong {
+        color: #263244;
+        font-size: 14px;
+    }
+
+    .promotion-state span {
+        font-size: 12px;
+    }
+
+    .promotion-record-list {
+        width: 100%;
+        background: #fff;
+    }
+
+    .promotion-record-header,
+    .promotion-record-row {
+        display: grid;
+        grid-template-columns: minmax(260px, 1fr) 120px 110px 100px 24px;
+        gap: 16px;
+        align-items: center;
+    }
+
+    .promotion-record-header {
+        min-height: 42px;
+        padding: 8px 16px;
+        border-bottom: 1px solid #dfe4ea;
+        background: #f8f9fb;
+        color: #667085;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .promotion-record-row {
+        width: 100%;
+        min-height: 72px;
+        padding: 12px 16px;
+        border: 0;
+        border-bottom: 1px solid #e7ebf0;
+        background: #fff;
+        color: #263244;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .promotion-record-row:last-child {
+        border-bottom: 0;
+    }
+
+    .promotion-record-row:hover {
+        background: #fafbfc;
+    }
+
+    .promotion-record-row:focus-visible {
+        outline: 2px solid var(--color-primary, #f2600c);
+        outline-offset: -2px;
+    }
+
+    .promotion-record-identity,
+    .promotion-detail-heading {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .promotion-record-icon,
+    .promotion-detail-icon {
+        display: inline-flex;
+        width: 38px;
+        height: 38px;
+        flex: 0 0 38px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #e1e6ed;
+        border-radius: 6px;
+        background: #f6f7f9;
+        color: #526175;
+    }
+
+    .promotion-record-name {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .promotion-record-name strong,
+    .promotion-record-name small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .promotion-record-name strong {
+        color: #1d2939;
+        font-size: 14px;
+    }
+
+    .promotion-record-name small,
+    .promotion-detail-code {
+        color: #667085;
+        font-size: 12px;
+    }
+
+    .promotion-record-branch,
+    .promotion-record-rules {
+        color: #526175;
+        font-size: 13px;
+    }
+
+    .promotion-status {
+        display: inline-flex;
+        min-height: 26px;
+        align-items: center;
+        padding: 3px 9px;
+        border: 1px solid #d8dee7;
+        border-radius: 999px;
+        background: #fff;
+        color: #526175;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .promotion-status.active::before {
+        width: 6px;
+        height: 6px;
+        margin-right: 6px;
+        border-radius: 50%;
+        background: #3d7f66;
+        content: "";
+    }
+
+    .promotion-status.inactive {
+        color: #7a5660;
+    }
+
+    .promotion-record-action {
+        color: #98a2b3;
+        text-align: right;
+    }
+
+    .promotion-detail-modal {
+        display: flex;
+        width: min(940px, calc(100vw - 32px));
+        max-height: min(880px, calc(100vh - 32px));
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 8px;
+    }
+
+    .promotion-detail-header {
+        flex: 0 0 auto;
+        padding: 16px 20px;
+    }
+
+    .promotion-detail-icon {
+        color: var(--color-primary, #f2600c);
+    }
+
+    .promotion-detail-body {
+        overflow-y: auto;
+        padding: 20px;
+        background: #f8f9fb;
+    }
+
+    .promotion-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border: 1px solid #dfe4ea;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    .promotion-summary > div {
+        display: flex;
+        min-width: 0;
+        min-height: 62px;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        padding: 10px 14px;
+        border-right: 1px solid #e5e9ef;
+    }
+
+    .promotion-summary > div:last-child {
+        border-right: 0;
+    }
+
+    .promotion-summary span,
+    .promotion-rule-values span,
+    .promotion-targets span,
+    .promotion-system-grid span {
+        color: #667085;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .promotion-summary strong,
+    .promotion-rule-values strong,
+    .promotion-targets strong,
+    .promotion-system-grid strong {
+        overflow-wrap: anywhere;
+        color: #263244;
+        font-size: 13px;
+    }
+
+    .promotion-rules-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 22px 0 10px;
+    }
+
+    .promotion-rules-heading h4 {
+        margin: 0;
+        color: #1d2939;
+        font-size: 15px;
+    }
+
+    .promotion-rules-heading span {
+        color: #667085;
+        font-size: 12px;
+    }
+
+    .promotion-rule-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .promotion-rule-card {
+        overflow: hidden;
+        border: 1px solid #dfe4ea;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    .promotion-rule-title {
+        display: flex;
+        min-height: 58px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 11px 14px;
+        border-bottom: 1px solid #e5e9ef;
+    }
+
+    .promotion-rule-title > div {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .promotion-rule-title strong {
+        overflow: hidden;
+        color: #1d2939;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .promotion-rule-title small {
+        color: #667085;
+        font-size: 12px;
+    }
+
+    .promotion-rule-values {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .promotion-rule-values > div,
+    .promotion-targets > div,
+    .promotion-system-grid > div {
+        display: flex;
+        min-width: 0;
+        min-height: 62px;
+        flex-direction: column;
+        gap: 5px;
+        padding: 11px 14px;
+        border-right: 1px solid #e5e9ef;
+        border-bottom: 1px solid #e5e9ef;
+    }
+
+    .promotion-rule-values > div:nth-child(4n) {
+        border-right: 0;
+    }
+
+    .promotion-targets {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .promotion-targets > div:last-child {
+        border-right: 0;
+    }
+
+    .promotion-system-fields,
+    .promotion-record-fields {
+        background: #fff;
+    }
+
+    .promotion-system-fields summary,
+    .promotion-record-fields summary {
+        padding: 12px 14px;
+        color: #526175;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        list-style-position: inside;
+    }
+
+    .promotion-system-fields[open] summary,
+    .promotion-record-fields[open] summary {
+        border-bottom: 1px solid #e5e9ef;
+    }
+
+    .promotion-system-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .promotion-system-grid > div:nth-child(3n) {
+        border-right: 0;
+    }
+
+    .promotion-mono {
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px !important;
+    }
+
+    .promotion-record-fields {
+        margin-top: 14px;
+        border: 1px solid #dfe4ea;
+        border-radius: 6px;
+    }
+
+    .promotion-empty-rules {
+        min-height: 150px;
+        border: 1px solid #dfe4ea;
+        border-radius: 6px;
+        background: #fff;
+    }
+
+    @@media (max-width: 760px) {
+        .promotion-setup-page {
+            padding-right: 12px;
+            padding-left: 12px;
+        }
+
+        .promotion-setup-page .section-header {
+            margin-bottom: 16px;
+        }
+
+        .promotion-toolbar {
+            min-height: auto;
+            padding: 10px;
+        }
+
+        .promotion-search {
+            max-width: none;
+        }
+
+        .promotion-result-count {
+            display: none;
+        }
+
+        .promotion-record-header {
+            display: none;
+        }
+
+        .promotion-record-row {
+            grid-template-columns: minmax(0, 1fr) auto auto 22px;
+            gap: 9px 12px;
+            min-height: 96px;
+            padding: 12px;
+        }
+
+        .promotion-record-identity {
+            grid-column: 1 / 4;
+            grid-row: 1;
+        }
+
+        .promotion-record-action {
+            grid-column: 4;
+            grid-row: 1;
+        }
+
+        .promotion-record-branch,
+        .promotion-record-rules,
+        .promotion-record-status {
+            grid-row: 2;
+        }
+
+        .promotion-record-branch::before {
+            margin-right: 5px;
+            color: #98a2b3;
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            content: "\f3c5";
+        }
+
+        .promotion-record-status {
+            grid-column: 3 / 5;
+            justify-self: end;
+        }
+
+        .promotion-detail-modal {
+            width: calc(100vw - 16px);
+            max-height: calc(100vh - 16px);
+        }
+
+        .promotion-detail-header,
+        .promotion-detail-body {
+            padding: 14px;
+        }
+
+        .promotion-summary {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .promotion-summary > div {
+            min-height: 58px;
+            padding: 9px;
+        }
+
+        .promotion-rule-values,
+        .promotion-system-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .promotion-rule-values > div:nth-child(4n),
+        .promotion-system-grid > div:nth-child(3n) {
+            border-right: 1px solid #e5e9ef;
+        }
+
+        .promotion-rule-values > div:nth-child(2n),
+        .promotion-system-grid > div:nth-child(2n) {
+            border-right: 0;
+        }
+
+        .promotion-targets {
+            grid-template-columns: 1fr;
+        }
+
+        .promotion-targets > div {
+            border-right: 0;
+        }
+    }
+
+    @@media (max-width: 420px) {
+        .promotion-record-row {
+            grid-template-columns: minmax(0, 1fr) auto auto;
+        }
+
+        .promotion-record-identity {
+            grid-column: 1 / 3;
+        }
+
+        .promotion-record-action {
+            grid-column: 3;
+        }
+
+        .promotion-record-branch {
+            grid-column: 1;
+        }
+
+        .promotion-record-rules {
+            grid-column: 2;
+        }
+
+        .promotion-record-status {
+            grid-column: 3;
+        }
+
+        .promotion-rule-values,
+        .promotion-system-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .promotion-rule-values > div,
+        .promotion-system-grid > div,
+        .promotion-rule-values > div:nth-child(2n),
+        .promotion-system-grid > div:nth-child(2n) {
+            border-right: 0;
+        }
+    }
+</style>
+
+<style>
+    .promotion-api-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .promotion-api-toolbar .staff-search-wrap {
+        flex: 1;
+        max-width: none;
+    }
+
+    .promotion-api-filter {
+        width: 230px;
+        flex: 0 0 230px;
+    }
+
+    .promotion-api-list .list-header,
+    .promotion-api-list .list-item {
+        grid-template-columns: 1.7fr 1.15fr .55fr 1.25fr 1fr .55fr .7fr .5fr;
+        gap: 12px;
+    }
+
+    .promotion-api-rule-count {
+        display: block;
+        margin-top: 3px;
+        color: #8a8a8a;
+        font-size: 11px;
+        font-weight: 400;
+    }
+
+    .promotion-api-modal {
+        width: 780px;
+    }
+
+    .promotion-api-tabs {
+        margin-bottom: 20px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+    }
+
+    .promotion-api-tabs .staff-tab {
+        flex: 0 0 auto;
+    }
+
+    .promotion-api-label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 8px;
+    }
+
+    .promotion-api-label-row .form-label {
+        margin: 0;
+    }
+
+    .promotion-api-checkbox,
+    .promotion-api-flags label {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: #555;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .promotion-api-rule-form {
+        margin-bottom: 16px;
+        padding: 16px;
+        border: 1px solid #e6e6e6;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    .promotion-api-rule-form:last-child {
+        margin-bottom: 0;
+    }
+
+    .promotion-api-rule-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: -2px 0 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #ededed;
+    }
+
+    .promotion-api-rule-heading strong {
+        overflow: hidden;
+        color: #222;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .promotion-api-rule-heading span {
+        flex-shrink: 0;
+        color: #777;
+        font-size: 12px;
+    }
+
+    .promotion-api-flags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 24px;
+        margin: 4px 0 14px;
+    }
+
+    .promotion-api-system-fields {
+        border-top: 1px solid #ededed;
+    }
+
+    .promotion-api-system-fields summary {
+        padding: 13px 0 4px;
+        color: #666;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .promotion-api-system-fields[open] summary {
+        margin-bottom: 12px;
+    }
+
+    .promotion-api-mono {
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 12px;
+    }
+
+    .promotion-api-textarea {
+        min-height: 72px;
+        resize: vertical;
+    }
+
+    .promotion-attached-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding: 12px;
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    .promotion-attached-item img,
+    .promotion-attached-placeholder {
+        width: 52px;
+        height: 52px;
+        flex: 0 0 52px;
+        border: 1px solid #e2e2e2;
+        border-radius: 6px;
+        background: #fff;
+        object-fit: cover;
+    }
+
+    .promotion-attached-placeholder {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #7b8797;
+    }
+
+    .promotion-attached-item > div {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .promotion-attached-item span,
+    .promotion-attached-item small {
+        color: #777;
+        font-size: 11px;
+    }
+
+    .promotion-attached-item strong {
+        overflow: hidden;
+        color: #222;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .promotion-api-subsection {
+        margin: 16px 0;
+        padding-top: 14px;
+        border-top: 1px solid #ededed;
+    }
+
+    .promotion-api-subsection h4 {
+        margin: 0 0 10px;
+        color: #333;
+        font-size: 13px;
+    }
+
+    .promotion-api-data-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-bottom: 8px;
+        border: 1px solid #e6e6e6;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .promotion-api-data-row > div {
+        display: flex;
+        min-width: 0;
+        min-height: 54px;
+        flex-direction: column;
+        gap: 4px;
+        padding: 9px 10px;
+        border-right: 1px solid #ededed;
+        border-bottom: 1px solid #ededed;
+    }
+
+    .promotion-api-data-row span {
+        color: #777;
+        font-size: 10px;
+        font-weight: 600;
+    }
+
+    .promotion-api-data-row strong {
+        overflow-wrap: anywhere;
+        color: #333;
+        font-size: 12px;
+    }
+
+    .promotion-api-modal .form-control[readonly],
+    .promotion-api-modal .form-control:disabled {
+        background: #f8f8f8;
+        color: #333;
+        opacity: 1;
+    }
+
+    @@media (max-width: 768px) {
+        .promotion-api-toolbar {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .promotion-api-filter {
+            width: 100%;
+            flex-basis: auto;
+        }
+
+        .promotion-api-list .list-header {
+            display: none;
+        }
+
+        .promotion-api-list .list-item {
+            display: flex;
+            gap: 8px;
+        }
+
+        .promotion-api-modal {
+            width: calc(100vw - 20px);
+            max-width: none;
+            max-height: calc(100dvh - 20px);
+        }
+
+        .promotion-api-modal .modal-header,
+        .promotion-api-modal .modal-body,
+        .promotion-api-modal .modal-footer {
+            padding-right: 16px;
+            padding-left: 16px;
+        }
+
+        .promotion-api-tabs {
+            gap: 6px;
+        }
+
+        .promotion-api-tabs .staff-tab {
+            padding: 8px 13px;
+            font-size: 12px;
+        }
+
+        .promotion-api-rule-form {
+            padding: 13px;
+        }
+
+        .promotion-api-data-row {
+            grid-template-columns: 1fr;
+        }
+
+        .promotion-api-data-row > div {
+            border-right: 0;
+        }
+    }
+</style>
+
+@code {
+    private List<PromotionSetupModel> promotions = new();
+    private List<InventoryDM> apiPromotions = new();
+    private Dictionary<string, EBI.UC.Inventory> apiPromotionRecords = new(StringComparer.OrdinalIgnoreCase);
+    private List<InventoryDM> availableProducts = new();
+    private InventoryDM? selectedApiPromotion;
+    private EBI.UC.Inventory? selectedApiPromotionRecord;
+    private bool showApiDetails;
+    private string apiLoadError = "";
+    private string apiDetailsTab = "General";
+    private string selectedApiMethodFilter = "";
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string searchQuery = "";
+    private string selectedTypeFilter = "";
+
+    private bool showModal = false;
+    private bool isEditMode = false;
+    private string errorMessage = "";
+    private string saveMessage = "";
+    private bool validationAttempted = false;
+    private PromotionSetupModel currentPromo = new();
+    private string activeTab = "GeneralSetup";
+
+    private bool showDeleteModal = false;
+    private PromotionSetupModel? promoToDelete;
+
+    // Product Picker filters
+    private string prodSearchQuery = "";
+    private string prodCategoryFilter = "";
+
+    // Keypad State
+    private bool showKeypad = false;
+    private string keypadTitle = "";
+    private string keypadField = "";
+    private string keypadValueString = "0";
+
+    private IEnumerable<string> availableCategories =>
+        availableProducts
+            .Select(p => p.ItemGroupName ?? "")
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct()
+            .OrderBy(c => c);
+
+    private IReadOnlyList<string> AvailablePromotionBranches =>
+        (AppState.AvailableBranches ?? new List<string>())
+            .Concat(currentPromo.AvailableBranchIds ?? new List<string>())
+            .Append(currentPromo.BranchID)
+            .Where(branchId => !string.IsNullOrWhiteSpace(branchId))
+            .Select(branchId => branchId.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(branchId => branchId)
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPromotions();
+    }
+
+    private async Task LoadPromotions()
+    {
+        isLoading = true;
+        apiLoadError = "";
+        saveMessage = "";
+        try
+        {
+            var inventory = await InventorySvc.LoadItemsAsync("");
+            if (inventory == null)
+            {
+                promotions = new();
+                availableProducts = new();
+                apiLoadError = "The Inventory API did not return a response.";
+                return;
+            }
+
+            availableProducts = inventory
+                .Where(item => item.InventoryTypeID != 8)
+                .OrderBy(item => item.AccountName)
+                .ToList();
+
+            var promotionHeaders = inventory
+                .Where(item => item.InventoryTypeID == 8)
+                .Where(item => !string.IsNullOrWhiteSpace(item.MasterAccountID))
+                .GroupBy(item => item.MasterAccountID, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(item => item.AccountName)
+                .ToList();
+
+            var loadedPromotions = new List<InventoryDM>();
+            var loadedRecords = new Dictionary<string, EBI.UC.Inventory>(StringComparer.OrdinalIgnoreCase);
+            foreach (var header in promotionHeaders)
+            {
+                try
+                {
+                    var full = await InventorySvc.LoadFullPackageAsync(header.MasterAccountID);
+                    if (full != null)
+                        loadedRecords[header.MasterAccountID] = full;
+                    loadedPromotions.Add(full?.objInventory ?? header);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PromotionSetup] InventoryFull load failed for {header.MasterAccountID}: {ex.Message}");
+                    loadedPromotions.Add(header);
+                }
+            }
+
+            apiPromotions = loadedPromotions.OrderBy(item => item.AccountName).ToList();
+            apiPromotionRecords = loadedRecords;
+            promotions = apiPromotions.Select(promotion =>
+            {
+                loadedRecords.TryGetValue(promotion.MasterAccountID ?? "", out var aggregate);
+                return MapApiPromotionToForm(promotion, aggregate);
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            promotions = new();
+            apiPromotions = new();
+            availableProducts = new();
+            apiPromotionRecords = new(StringComparer.OrdinalIgnoreCase);
+            apiLoadError = $"Unable to load promotion rules: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private IEnumerable<InventoryDM> FilteredApiPromotions
+    {
+        get
+        {
+            IEnumerable<InventoryDM> result = apiPromotions;
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                var query = searchQuery.Trim();
+                result = result.Where(item =>
+                    ContainsIgnoreCase(item.AccountName, query) ||
+                    ContainsIgnoreCase(item.DisplayCode, query) ||
+                    ContainsIgnoreCase(item.MasterAccountID, query) ||
+                    ContainsIgnoreCase(item.BranchID, query) ||
+                    (item.lstPackage?.Any(rule =>
+                        ContainsIgnoreCase(rule.Description, query) ||
+                        ContainsIgnoreCase(rule.InventoryID, query) ||
+                        ContainsIgnoreCase(rule.AutoID, query)) ?? false));
+            }
+
+            if (int.TryParse(selectedApiMethodFilter, out var method))
+            {
+                result = result.Where(item =>
+                    item.lstPackage?.Any(rule => rule.PromotionMethod == method) == true);
+            }
+
+            return result;
+        }
+    }
+
+    private static bool ContainsIgnoreCase(string? value, string query) =>
+        value?.Contains(query, StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsApiPromotionActive(InventoryDM promotion) =>
+        promotion.IsSold;
+
+    private static string ValueOrDash(object? value)
+    {
+        var text = value?.ToString()?.Trim();
+        return string.IsNullOrWhiteSpace(text) ? "-" : text;
+    }
+
+    private static string GetApiPromotionMethodName(int method) => method switch
+    {
+        0 => "No Effect",
+        1 => "Fixed Unit Price",
+        2 => "Discount Percentage",
+        3 => "Discount Amount",
+        4 => "Bundled Discount",
+        5 => "Lump Sum Discount",
+        6 => "Lump Sum Fixed Price",
+        _ => "Unknown Method"
+    };
+
+    private static PromotionSetupModel MapApiPromotionToForm(
+        InventoryDM promotion,
+        EBI.UC.Inventory? aggregate)
+    {
+        var activeRules = promotion.lstPackage?
+            .Where(item => !item.IsVoided)
+            .ToList() ?? new List<Inventory_PackageItemDM>();
+        var triggerRule = GetBuyGetTriggerRule(activeRules);
+        var rule = triggerRule == null
+            ? activeRules.FirstOrDefault()
+            : activeRules
+                .Where(item => !ReferenceEquals(item, triggerRule))
+                .FirstOrDefault(item => item.PromotionMethod != 0)
+              ?? activeRules.FirstOrDefault(item => !ReferenceEquals(item, triggerRule));
+        var appliedProductIds = activeRules
+            .SelectMany(GetRuleAppliedProductIds)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var availableBranchIds = aggregate?.lstMasterAccount_Branch
+            .Where(branch => branch.IsEnabled && !string.IsNullOrWhiteSpace(branch.BranchID))
+            .Select(branch => branch.BranchID.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(branchId => branchId)
+            .ToList() ?? new List<string>();
+
+        if (availableBranchIds.Count == 0 && !string.IsNullOrWhiteSpace(promotion.BranchID))
+            availableBranchIds.Add(promotion.BranchID.Trim());
+
+        return new PromotionSetupModel
+        {
+            MasterAccountID = promotion.MasterAccountID ?? "",
+            Code = promotion.DisplayCode ?? "",
+            Name = promotion.AccountName ?? "",
+            PromoType = rule?.PromotionMethod == 1 ? "Fixed Price" : "Percentage",
+            PromoMethod = GetPromotionMethodValue(rule?.PromotionMethod ?? 0),
+            Rounding = GetRoundingValue(rule?.RoundingOption ?? 0),
+            PromoCondition = GetPromotionConditionValue(rule?.PromoCondition ?? 0),
+            DiscountValue = ResolvePromotionFormValue(rule),
+            StartDate = promotion.AvailableDateFrom.Year > 1 ? promotion.AvailableDateFrom : null,
+            EndDate = promotion.AvailableDateTo.Year > 1 ? promotion.AvailableDateTo : null,
+            AvailableTimeFrom = promotion.AvailableTimeFrom,
+            AvailableTimeTo = promotion.AvailableTimeTo,
+            MinQuantity = Math.Max(1, Convert.ToInt32(triggerRule?.Quantity ?? rule?.Quantity ?? 1)),
+            MaxLimitPerOrder = Math.Max(0, Convert.ToInt32(rule?.MaxQuantity ?? 0)),
+            IsActive = IsApiPromotionActive(promotion),
+            Remarks = promotion.Remarks ?? "",
+            BranchID = promotion.BranchID ?? "",
+            AvailableBranchIds = availableBranchIds,
+            PromoPriority = promotion.PromoPriority,
+            MaxDiscountLimit = promotion.MaxDiscountLimit,
+            UnitPrice = rule?.UnitPrice ?? 0,
+            TotalPrice = rule?.TotalPrice ?? 0,
+            TotalActualValue = rule?.TotalActualValue ?? 0,
+            PromoConditionAmount = rule?.PromoConditionAmt ?? 0,
+            PackageQuantityTypeID = rule?.PackageQuantityTypeID ?? 1,
+            IsConfirmed = activeRules.Count == 0 || activeRules.Any(item => item.IsConfirmed),
+            IsDeferred = rule?.IsDeferred ?? false,
+            OptionItems = string.Join(",", appliedProductIds),
+            OptionGroups = rule?.OptionGroups ?? "",
+            OptionBrands = rule?.OptionBrands ?? "",
+            HeaderCaption = rule?.HeaderCaption ?? "",
+            CustomRules = rule?.CustomRules ?? "",
+            AppliedProductIds = appliedProductIds
+        };
+    }
+
+    private static Inventory_PackageItemDM? GetBuyGetTriggerRule(
+        IReadOnlyList<Inventory_PackageItemDM> rules)
+    {
+        if (rules.Count < 2)
+            return null;
+
+        var explicitTrigger = rules.FirstOrDefault(rule => rule.PromotionMethod == 0);
+        if (explicitTrigger != null)
+            return explicitTrigger;
+
+        var firstRule = rules[0];
+        var hasRewardRule = rules.Skip(1).Any(rule =>
+            rule.MaxQuantity > 0 &&
+            rule.PromotionMethod == (int)EBI.Enum.EnumPromotionMethod.DiscountPercentage);
+        return firstRule.Quantity > 1 && hasRewardRule ? firstRule : null;
+    }
+
+    private static decimal ResolvePromotionFormValue(Inventory_PackageItemDM? rule)
+    {
+        if (rule == null)
+            return 0;
+        if (rule.UnitActualValue != 0)
+            return rule.UnitActualValue;
+        if (rule.PromotionMethod == (int)EBI.Enum.EnumPromotionMethod.DiscountPercentage &&
+            rule.UnitPrice > 0 &&
+            rule.UnitPrice <= 1)
+        {
+            return rule.UnitPrice * 100m;
+        }
+
+        return rule.UnitPrice;
+    }
+
+    private static IReadOnlyList<string> GetRuleAppliedProductIds(Inventory_PackageItemDM rule)
+    {
+        var optionItems = ParseOptionValues(rule.OptionItems);
+        if (optionItems.Count > 0)
+            return optionItems;
+
+        return string.IsNullOrWhiteSpace(rule.InventoryID)
+            ? Array.Empty<string>()
+            : new[] { rule.InventoryID.Trim() };
+    }
+
+    private static string GetPromotionMethodValue(int method) => method switch
+    {
+        0 => "No Effect",
+        1 => "Fixed Unit Price",
+        2 => "Discount %",
+        3 => "Discount Amt",
+        4 => "Bundled Discount Amt",
+        5 => "Lumpsum Disc Amt",
+        6 => "Fixed Lumpsum Price",
+        _ => "No Effect"
+    };
+
+    private static int GetPromotionMethodId(string? method) => method switch
+    {
+        "Fixed Unit Price" => 1,
+        "Discount %" or "Percentage" => 2,
+        "Discount Amt" or "Discount Amount" => 3,
+        "Bundled Discount Amt" => 4,
+        "Lumpsum Disc Amt" => 5,
+        "Fixed Lumpsum Price" => 6,
+        _ => 0
+    };
+
+    private static string GetPromotionConditionValue(int condition) => condition switch
+    {
+        1 => "Total Price After Discount, Disc To All Items",
+        2 => "Total Price After Discount",
+        3 => "Total Quantity Bought, Disc To All Items",
+        4 => "Total Quantity Bought",
+        5 => "Total Price Before Discount, Disc To All Items",
+        6 => "Total Price Before Discount",
+        _ => "No Condition"
+    };
+
+    private static int GetPromotionConditionId(string? condition) => condition switch
+    {
+        "Total Price After Discount, Disc To All Items" => 1,
+        "Total Price After Discount" => 2,
+        "Total Quantity Bought, Disc To All Items" => 3,
+        "Total Quantity Bought" => 4,
+        "Total Price Before Discount, Disc To All Items" => 5,
+        "Total Price Before Discount" => 6,
+        _ => 0
+    };
+
+    private static string GetRoundingValue(int rounding) => rounding switch
+    {
+        1 => "Round To5Cent",
+        2 => "Round Up To10Cent",
+        3 => "Round Up To Dollar",
+        4 => "Round Down To10Cent",
+        5 => "Round Down To Dollar",
+        _ => "No Rounding"
+    };
+
+    private static int GetRoundingId(string? rounding) => rounding switch
+    {
+        "Round To5Cent" => 1,
+        "Round Up To10Cent" => 2,
+        "Round Up To Dollar" => 3,
+        "Round Down To10Cent" => 4,
+        "Round Down To Dollar" => 5,
+        _ => 0
+    };
+
+    private static int GetAttachedItemCount(InventoryDM promotion) =>
+        promotion.lstPackage?.Count(rule => !rule.IsVoided) ?? 0;
+
+    private static string FormatDate(DateTime value) =>
+        value.Year <= 1 ? "-" : value.ToString("dd/MM/yyyy");
+
+    private static string FormatDateRange(DateTime from, DateTime to)
+    {
+        var fromText = FormatDate(from);
+        var toText = FormatDate(to);
+        return fromText == "-" && toText == "-" ? "-" : $"{fromText} - {toText}";
+    }
+
+    private static string FormatTime(TimeSpan value) => value.ToString(@"hh\:mm");
+
+    private static string FormatTimeInput(TimeSpan value) => value.ToString(@"hh\:mm\:ss");
+
+    private void OnAvailableTimeFromChanged(ChangeEventArgs args)
+    {
+        if (TimeOnly.TryParse(args.Value?.ToString(), out var value))
+            currentPromo.AvailableTimeFrom = value.ToTimeSpan();
+    }
+
+    private void OnAvailableTimeToChanged(ChangeEventArgs args)
+    {
+        if (TimeOnly.TryParse(args.Value?.ToString(), out var value))
+            currentPromo.AvailableTimeTo = value.ToTimeSpan();
+    }
+
+    private static string FormatTimeRange(TimeSpan from, TimeSpan to) =>
+        $"{FormatTime(from)} - {FormatTime(to)}";
+
+    private InventoryDM? FindAttachedItem(string? inventoryId)
+    {
+        if (string.IsNullOrWhiteSpace(inventoryId))
+            return null;
+
+        return availableProducts.FirstOrDefault(item =>
+            string.Equals(item.MasterAccountID, inventoryId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(item.DisplayCode, inventoryId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string GetAttachedItemName(string? inventoryId, string? fallbackDescription)
+    {
+        var item = FindAttachedItem(inventoryId);
+        if (!string.IsNullOrWhiteSpace(item?.AccountName))
+            return item.AccountName;
+        if (!string.IsNullOrWhiteSpace(fallbackDescription))
+            return fallbackDescription;
+        return ValueOrDash(inventoryId);
+    }
+
+    private static IReadOnlyList<string> ParseOptionValues(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+            return Array.Empty<string>();
+
+        return rawValue
+            .Split(new[] { ',', ';', '|', '_' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => value.Trim(' ', '[', ']', '"', '\''))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private string ResolveOptionItems(string? rawValue)
+    {
+        var values = ParseOptionValues(rawValue);
+        if (values.Count == 0)
+            return "-";
+
+        return string.Join(", ", values.Select(value =>
+        {
+            var item = FindAttachedItem(value);
+            return string.IsNullOrWhiteSpace(item?.AccountName) ? value : item.AccountName;
+        }));
+    }
+
+    private string ResolveOptionGroups(string? rawValue)
+    {
+        var values = ParseOptionValues(rawValue);
+        if (values.Count == 0)
+            return "-";
+
+        return string.Join(", ", values.Select(value =>
+        {
+            var item = availableProducts.FirstOrDefault(product =>
+                string.Equals(product.ItemGroupID, value, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(product.ItemGroupName, value, StringComparison.OrdinalIgnoreCase));
+            return string.IsNullOrWhiteSpace(item?.ItemGroupName) ? value : item.ItemGroupName;
+        }).Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private string ResolveOptionBrands(string? rawValue)
+    {
+        var values = ParseOptionValues(rawValue);
+        if (values.Count == 0)
+            return "-";
+
+        return string.Join(", ", values.Select(value =>
+        {
+            var item = availableProducts.FirstOrDefault(product =>
+                string.Equals(product.BrandName, value, StringComparison.OrdinalIgnoreCase));
+            return string.IsNullOrWhiteSpace(item?.BrandName) ? value : item.BrandName;
+        }).Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+
+    private void OpenApiPromotionDetails(InventoryDM promotion)
+    {
+        selectedApiPromotion = promotion;
+        selectedApiPromotionRecord = !string.IsNullOrWhiteSpace(promotion.MasterAccountID) &&
+                                     apiPromotionRecords.TryGetValue(promotion.MasterAccountID, out var record)
+            ? record
+            : null;
+        apiDetailsTab = "General";
+        showApiDetails = true;
+    }
+
+    private void CloseApiPromotionDetails()
+    {
+        showApiDetails = false;
+        selectedApiPromotion = null;
+        selectedApiPromotionRecord = null;
+    }
+    private string GetDisplayImageUrl(InventoryDM item)
+    {
+        if (item == null) return string.Empty;
+        var masterId = item.MasterAccountID?.Trim() ?? string.Empty;
+        if (!string.IsNullOrEmpty(masterId))
+        {
+            var cached = CacheService.GetImage(masterId) ?? LocalImageCache.GetImage(masterId);
+            if (!string.IsNullOrEmpty(cached)) return cached;
+        }
+        return ProductCacheService.ResolveServerImageUrl(item.ImagePath, item.ImageFileName);
+    }
+
+    private IEnumerable<PromotionSetupModel> FilteredPromotions
+    {
+        get
+        {
+            var result = promotions.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                result = result.Where(p => (p.Name?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           (p.Code?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           (p.PromoMethod?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           (p.PromoCondition?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(selectedTypeFilter))
+            {
+                result = result.Where(p => p.PromoMethod == selectedTypeFilter || p.PromoType == selectedTypeFilter);
+            }
+
+            return result;
+        }
+    }
+
+    private IEnumerable<InventoryDM> FilteredProductsForPicker
+    {
+        get
+        {
+            var result = availableProducts.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(prodSearchQuery))
+            {
+                result = result.Where(p => (p.AccountName?.Contains(prodSearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                                           (p.MasterAccountID?.Contains(prodSearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(prodCategoryFilter))
+            {
+                result = result.Where(p => p.ItemGroupName == prodCategoryFilter);
+            }
+
+            var appliedProductIds = currentPromo.AppliedProductIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return result
+                .OrderByDescending(product =>
+                    !string.IsNullOrWhiteSpace(product.MasterAccountID) &&
+                    appliedProductIds.Contains(product.MasterAccountID.Trim()))
+                .ThenBy(product => product.AccountName)
+                .ThenBy(product => product.MasterAccountID);
+        }
+    }
+
+    private string GetAppliedProductsSummary(PromotionSetupModel promo)
+    {
+        if (promo.AppliedProductIds == null || !promo.AppliedProductIds.Any())
+        {
+            return "None (0 Products)";
+        }
+        return $"{promo.AppliedProductIds.Count} Product(s)";
+    }
+
+    private string GetPromoValueLabel()
+    {
+        return currentPromo.PromoMethod switch
+        {
+            "Fixed Unit Price" => "Fixed Unit Price (RM)",
+            "Discount Amt" => "Discount Amount (RM)",
+            "Bundled Discount Amt" => "Bundled Discount Amount (RM)",
+            "Lumpsum Disc Amt" => "Lumpsum Discount Amount (RM)",
+            "Fixed Lumpsum Price" => "Fixed Lumpsum Price (RM)",
+            "No Effect" => "Discount Value",
+            _ => "Discount Rate (%)"
+        };
+    }
+
+    private string GetPromoValueDisplay()
+    {
+        if (currentPromo.PromoMethod == "No Effect")
+            return "RM 0.00 (No Effect)";
+
+        if (currentPromo.PromoMethod == "Discount %" || (string.IsNullOrEmpty(currentPromo.PromoMethod) && currentPromo.PromoType == "Percentage"))
+            return $"{currentPromo.DiscountValue:N2}%";
+
+        return $"RM {currentPromo.DiscountValue:N2}";
+    }
+
+    private string GetPromoRateDisplay(PromotionSetupModel promo)
+    {
+        var method = string.IsNullOrEmpty(promo.PromoMethod) ? promo.PromoType : promo.PromoMethod;
+        if (method == "No Effect")
+            return "No Effect";
+
+        if (method == "Discount %" || method == "Percentage")
+            return $"{promo.DiscountValue:N2}% OFF";
+
+        return $"RM {promo.DiscountValue:N2}";
+    }
+
+    private void ToggleProductSelection(string? masterAccountId)
+    {
+        if (string.IsNullOrWhiteSpace(masterAccountId)) return;
+        var trimmedId = masterAccountId.Trim();
+        var existing = currentPromo.AppliedProductIds.FirstOrDefault(id => string.Equals(id?.Trim(), trimmedId, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            currentPromo.AppliedProductIds.Remove(existing);
+        }
+        else
+        {
+            currentPromo.AppliedProductIds.Add(trimmedId);
+        }
+
+        SyncOptionItemsFromAppliedProducts();
+    }
+
+    private void SelectAllFilteredProducts()
+    {
+        foreach (var p in FilteredProductsForPicker)
+        {
+            if (!string.IsNullOrWhiteSpace(p.MasterAccountID))
+            {
+                var trimmed = p.MasterAccountID.Trim();
+                if (!currentPromo.AppliedProductIds.Any(id => string.Equals(id?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)))
+                {
+                    currentPromo.AppliedProductIds.Add(trimmed);
+                }
+            }
+        }
+
+        SyncOptionItemsFromAppliedProducts();
+    }
+
+    private void ClearAllProducts()
+    {
+        currentPromo.AppliedProductIds.Clear();
+        SyncOptionItemsFromAppliedProducts();
+    }
+
+    private void OnOptionItemsChanged(ChangeEventArgs args)
+    {
+        currentPromo.OptionItems = args.Value?.ToString() ?? "";
+        currentPromo.AppliedProductIds = ParseOptionValues(currentPromo.OptionItems).ToList();
+    }
+
+    private void SyncOptionItemsFromAppliedProducts()
+    {
+        currentPromo.AppliedProductIds = currentPromo.AppliedProductIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        currentPromo.OptionItems = string.Join(",", currentPromo.AppliedProductIds);
+    }
+
+    private void OpenAddModal()
+    {
+        isEditMode = false;
+        activeTab = "GeneralSetup";
+        errorMessage = "";
+        validationAttempted = false;
+        prodSearchQuery = "";
+        prodCategoryFilter = "";
+        currentPromo = new PromotionSetupModel
+        {
+            Code = GeneratePromoCode(),
+            BranchID = AppState.SelectedBranchID ?? "",
+            AvailableBranchIds = string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+                ? new List<string>()
+                : new List<string> { AppState.SelectedBranchID },
+            PromoType = "Percentage",
+            PromoMethod = "Discount %",
+            Rounding = "No Rounding",
+            PromoCondition = "Total Price After Discount, Disc To All Items",
+            StartDate = DateTime.Today,
+            EndDate = DateTime.Today.AddMonths(1),
+            AvailableTimeFrom = TimeSpan.Zero,
+            AvailableTimeTo = new TimeSpan(23, 59, 59),
+            IsConfirmed = true,
+            AppliedProductIds = new List<string>()
+        };
+        showModal = true;
+    }
+
+    private void OpenEditModal(PromotionSetupModel promo)
+    {
+        isEditMode = true;
+        activeTab = "GeneralSetup";
+        errorMessage = "";
+        validationAttempted = false;
+        prodSearchQuery = "";
+        prodCategoryFilter = "";
+        currentPromo = new PromotionSetupModel
+        {
+            MasterAccountID = promo.MasterAccountID,
+            Code = promo.Code,
+            Name = promo.Name,
+            PromoType = promo.PromoType,
+            PromoMethod = string.IsNullOrEmpty(promo.PromoMethod) ? (promo.PromoType == "Fixed Price" ? "Fixed Unit Price" : "Discount %") : promo.PromoMethod,
+            Rounding = string.IsNullOrEmpty(promo.Rounding) ? "No Rounding" : promo.Rounding,
+            PromoCondition = string.IsNullOrEmpty(promo.PromoCondition) ? "Total Price After Discount, Disc To All Items" : promo.PromoCondition,
+            DiscountValue = promo.DiscountValue,
+            StartDate = promo.StartDate,
+            EndDate = promo.EndDate,
+            MinQuantity = promo.MinQuantity,
+            MaxLimitPerOrder = promo.MaxLimitPerOrder,
+            IsActive = promo.IsActive,
+            Remarks = promo.Remarks,
+            BranchID = promo.BranchID,
+            AvailableBranchIds = promo.AvailableBranchIds != null
+                ? promo.AvailableBranchIds.ToList()
+                : new List<string>(),
+            AvailableTimeFrom = promo.AvailableTimeFrom,
+            AvailableTimeTo = promo.AvailableTimeTo,
+            PromoPriority = promo.PromoPriority,
+            MaxDiscountLimit = promo.MaxDiscountLimit,
+            UnitPrice = promo.UnitPrice,
+            TotalPrice = promo.TotalPrice,
+            TotalActualValue = promo.TotalActualValue,
+            PromoConditionAmount = promo.PromoConditionAmount,
+            PackageQuantityTypeID = promo.PackageQuantityTypeID,
+            IsConfirmed = promo.IsConfirmed,
+            IsDeferred = promo.IsDeferred,
+            OptionItems = promo.OptionItems,
+            OptionGroups = promo.OptionGroups,
+            OptionBrands = promo.OptionBrands,
+            HeaderCaption = promo.HeaderCaption,
+            CustomRules = promo.CustomRules,
+            AppliedProductIds = promo.AppliedProductIds != null ? promo.AppliedProductIds.ToList() : new List<string>()
+        };
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        errorMessage = "";
+        validationAttempted = false;
+    }
+
+    private string GeneratePromoCode()
+    {
+        var nextNumber = 101;
+        while (promotions.Any(p => string.Equals(p.Code, $"PROMO-{nextNumber}", StringComparison.OrdinalIgnoreCase)))
+        {
+            nextNumber++;
+        }
+
+        return $"PROMO-{nextNumber}";
+    }
+
+    private async Task SavePromo()
+    {
+        validationAttempted = true;
+        errorMessage = "";
+        currentPromo.Code = currentPromo.Code?.Trim().ToUpperInvariant() ?? "";
+        currentPromo.Name = currentPromo.Name?.Trim() ?? "";
+        currentPromo.BranchID = currentPromo.BranchID?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(currentPromo.BranchID) &&
+            !currentPromo.AvailableBranchIds.Contains(currentPromo.BranchID, StringComparer.OrdinalIgnoreCase))
+        {
+            currentPromo.AvailableBranchIds.Add(currentPromo.BranchID);
+        }
+        SyncOptionItemsFromAppliedProducts();
+
+        if (string.IsNullOrWhiteSpace(currentPromo.Code) || string.IsNullOrWhiteSpace(currentPromo.Name))
+        {
+            errorMessage = string.IsNullOrWhiteSpace(currentPromo.Name)
+                ? "Enter an account name before saving."
+                : "Enter a display code before saving.";
+            return;
+        }
+
+        if (!isEditMode && promotions.Any(p => string.Equals(p.Code, currentPromo.Code, StringComparison.OrdinalIgnoreCase)))
+        {
+            errorMessage = $"Display code {currentPromo.Code} already exists.";
+            return;
+        }
+
+        if (currentPromo.StartDate.HasValue && currentPromo.EndDate.HasValue && currentPromo.StartDate > currentPromo.EndDate)
+        {
+            errorMessage = "Available Date To must be on or after Available Date From.";
+            return;
+        }
+
+        if (currentPromo.AppliedProductIds.Count == 0)
+        {
+            errorMessage = "Select at least one attached product before saving.";
+            activeTab = "AppliedProducts";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var isNew = string.IsNullOrWhiteSpace(currentPromo.MasterAccountID);
+            EBI.UC.Inventory? aggregate = null;
+            if (!isNew)
+            {
+                apiPromotionRecords.TryGetValue(currentPromo.MasterAccountID, out aggregate);
+                aggregate ??= await InventorySvc.LoadFullPackageAsync(currentPromo.MasterAccountID);
+            }
+
+            aggregate ??= new EBI.UC.Inventory();
+            ApplyFormToApiPromotion(aggregate, currentPromo, isNew);
+
+            var result = isNew
+                ? await InventorySvc.CreateItemAsync(aggregate)
+                : await InventorySvc.UpdateItemAsync(aggregate);
+
+            if (!result.Success)
+            {
+                errorMessage = string.IsNullOrWhiteSpace(result.Message)
+                    ? "The promotion could not be saved by InventoryFull."
+                    : $"The promotion could not be saved: {result.Message}";
+                return;
+            }
+
+            showModal = false;
+            validationAttempted = false;
+            await LoadPromotions();
+            saveMessage = $"{currentPromo.Name} was saved successfully.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"The promotion could not be saved: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ApplyFormToApiPromotion(EBI.UC.Inventory aggregate, PromotionSetupModel form, bool isNew)
+    {
+        var inventory = aggregate.objInventory;
+        inventory.InventoryTypeID = 8;
+        inventory.AccountName = form.Name;
+        inventory.DisplayCode = form.Code;
+        inventory.ProductCode = form.Code;
+        inventory.Remarks = form.Remarks;
+        inventory.BranchID = form.BranchID;
+        inventory.IsSold = form.IsActive;
+        inventory.AccountStatus = form.IsActive ? "Active" : "Inactive";
+        inventory.AvailableDateFrom = form.StartDate ?? DateTime.MinValue;
+        inventory.AvailableDateTo = form.EndDate ?? DateTime.MinValue;
+        inventory.AvailableTimeFrom = form.AvailableTimeFrom;
+        inventory.AvailableTimeTo = form.AvailableTimeTo;
+        inventory.PromoPriority = form.PromoPriority;
+        inventory.MaxDiscountLimit = form.MaxDiscountLimit;
+        inventory.PromoItemsCount = form.MinQuantity;
+        inventory.HasPackage = true;
+        inventory.IsDirty = true;
+        inventory.SaveAction = isNew ? EBI.Enum.EntityState.Added : EBI.Enum.EntityState.Changed;
+
+        var firstSelectedId = form.AppliedProductIds.First();
+        var firstSelectedProduct = FindAttachedItem(firstSelectedId);
+        var activeRules = inventory.lstPackage.Where(rule => !rule.IsVoided).ToList();
+        var primaryRule = activeRules.FirstOrDefault();
+
+        if (primaryRule == null)
+        {
+            primaryRule = new Inventory_PackageItemDM
+            {
+                InventoryID = firstSelectedId,
+                Description = firstSelectedProduct?.AccountName ?? firstSelectedId,
+                InventoryTypeID = firstSelectedProduct?.InventoryTypeID ?? 0
+            };
+            inventory.lstPackage.Add(primaryRule);
+            activeRules.Add(primaryRule);
+        }
+
+        EnsurePackageRuleProduct(primaryRule, form, firstSelectedId, firstSelectedProduct);
+
+        if (IsBuyGetFormRule(form))
+        {
+            ConfigureBuyGetTriggerRule(
+                primaryRule,
+                form,
+                inventory.MasterAccountID,
+                isNew || string.IsNullOrWhiteSpace(primaryRule.AutoID));
+
+            var rewardRule = activeRules
+                .Skip(1)
+                .FirstOrDefault(rule => rule.PromotionMethod != 0)
+                ?? activeRules.Skip(1).FirstOrDefault();
+            if (rewardRule == null)
+            {
+                rewardRule = new Inventory_PackageItemDM
+                {
+                    InventoryID = firstSelectedId,
+                    Description = $"{form.Name} Reward",
+                    InventoryTypeID = firstSelectedProduct?.InventoryTypeID ?? 0
+                };
+                inventory.lstPackage.Add(rewardRule);
+                activeRules.Add(rewardRule);
+            }
+
+            EnsurePackageRuleProduct(rewardRule, form, firstSelectedId, firstSelectedProduct);
+            ApplyFormToPackageRule(
+                rewardRule,
+                form,
+                inventory.MasterAccountID,
+                isNew || string.IsNullOrWhiteSpace(rewardRule.AutoID));
+            rewardRule.Quantity = 1;
+            rewardRule.MaxQuantity = form.MaxLimitPerOrder;
+
+            foreach (var additionalRule in activeRules.Where(rule =>
+                         !ReferenceEquals(rule, primaryRule) &&
+                         !ReferenceEquals(rule, rewardRule)))
+            {
+                UpdatePackageRuleSelections(additionalRule, form, inventory.MasterAccountID);
+            }
+        }
+        else
+        {
+            ApplyFormToPackageRule(
+                primaryRule,
+                form,
+                inventory.MasterAccountID,
+                isNew || string.IsNullOrWhiteSpace(primaryRule.AutoID));
+
+            foreach (var additionalRule in activeRules.Skip(1))
+                UpdatePackageRuleSelections(additionalRule, form, inventory.MasterAccountID);
+        }
+
+        ApplyAvailableBranches(aggregate, form, inventory.MasterAccountID);
+    }
+
+    private static bool IsBuyGetFormRule(PromotionSetupModel form) =>
+        string.Equals(form.PromoMethod, "Discount %", StringComparison.OrdinalIgnoreCase) &&
+        form.DiscountValue >= 100m &&
+        form.MinQuantity > 0 &&
+        form.MaxLimitPerOrder > 0;
+
+    private static void EnsurePackageRuleProduct(
+        Inventory_PackageItemDM rule,
+        PromotionSetupModel form,
+        string firstSelectedId,
+        InventoryDM? firstSelectedProduct)
+    {
+        if (!string.IsNullOrWhiteSpace(rule.InventoryID) &&
+            form.AppliedProductIds.Contains(rule.InventoryID.Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        rule.InventoryID = firstSelectedId;
+        rule.Description = firstSelectedProduct?.AccountName ?? firstSelectedId;
+        rule.InventoryTypeID = firstSelectedProduct?.InventoryTypeID ?? rule.InventoryTypeID;
+    }
+
+    private static void ConfigureBuyGetTriggerRule(
+        Inventory_PackageItemDM rule,
+        PromotionSetupModel form,
+        string? packageId,
+        bool isNew)
+    {
+        rule.PackageID = packageId;
+        rule.Quantity = form.MinQuantity;
+        rule.PromotionMethod = (int)EBI.Enum.EnumPromotionMethod.NoEffect;
+        rule.UnitActualValue = 0;
+        rule.MaxQuantity = form.MinQuantity;
+        rule.OptionItems = form.OptionItems;
+        rule.OptionGroups = form.OptionGroups;
+        rule.OptionBrands = form.OptionBrands;
+        rule.HeaderCaption = form.HeaderCaption;
+        rule.CustomRules = form.CustomRules;
+        rule.IsConfirmed = form.IsConfirmed;
+        rule.IsDeferred = form.IsDeferred;
+        rule.IsVoided = false;
+        rule.IsDirty = true;
+        rule.SaveAction = isNew
+            ? EBI.Enum.EntityState.Added
+            : EBI.Enum.EntityState.Changed;
+    }
+
+    private static void UpdatePackageRuleSelections(
+        Inventory_PackageItemDM rule,
+        PromotionSetupModel form,
+        string? packageId)
+    {
+        rule.PackageID = packageId;
+        rule.OptionItems = form.OptionItems;
+        rule.OptionGroups = form.OptionGroups;
+        rule.OptionBrands = form.OptionBrands;
+        rule.IsDirty = true;
+        rule.SaveAction = string.IsNullOrWhiteSpace(rule.AutoID)
+            ? EBI.Enum.EntityState.Added
+            : EBI.Enum.EntityState.Changed;
+    }
+
+    private void ApplyAvailableBranches(
+        EBI.UC.Inventory aggregate,
+        PromotionSetupModel form,
+        string? masterAccountId)
+    {
+        var selectedBranchIds = (form.AvailableBranchIds ?? new List<string>())
+            .Where(branchId => !string.IsNullOrWhiteSpace(branchId))
+            .Select(branchId => branchId.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(form.BranchID))
+            selectedBranchIds.Add(form.BranchID.Trim());
+
+        var branchIds = AvailablePromotionBranches
+            .Concat(aggregate.lstMasterAccount_Branch
+                .Where(branch => !string.IsNullOrWhiteSpace(branch.BranchID))
+                .Select(branch => branch.BranchID.Trim()))
+            .Concat(selectedBranchIds)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var branchId in branchIds)
+        {
+            var isEnabled = selectedBranchIds.Contains(branchId);
+            var existingRows = aggregate.lstMasterAccount_Branch
+                .Where(branch => string.Equals(branch.BranchID, branchId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (existingRows.Count == 0)
+            {
+                aggregate.lstMasterAccount_Branch.Add(new MasterAccount_BranchDM
+                {
+                    MasterAccountTypeID = 4,
+                    MasterAccountID = masterAccountId,
+                    BranchID = branchId,
+                    GroupID = branchId,
+                    IsEnabled = isEnabled,
+                    SaveAction = EBI.Enum.EntityState.Added,
+                    IsDirty = true
+                });
+                continue;
+            }
+
+            foreach (var branch in existingRows)
+            {
+                if (branch.IsEnabled == isEnabled)
+                    continue;
+
+                branch.IsEnabled = isEnabled;
+                branch.IsDirty = true;
+                branch.SaveAction = string.IsNullOrWhiteSpace(branch.AutoID)
+                    ? EBI.Enum.EntityState.Added
+                    : EBI.Enum.EntityState.Changed;
+            }
+        }
+    }
+
+    private bool IsPromotionBranchAvailable(string branchId) =>
+        currentPromo.AvailableBranchIds.Contains(branchId, StringComparer.OrdinalIgnoreCase);
+
+    private void OnPrimaryBranchChanged(ChangeEventArgs args)
+    {
+        currentPromo.BranchID = args.Value?.ToString()?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(currentPromo.BranchID) &&
+            !currentPromo.AvailableBranchIds.Contains(currentPromo.BranchID, StringComparer.OrdinalIgnoreCase))
+        {
+            currentPromo.AvailableBranchIds.Add(currentPromo.BranchID);
+        }
+    }
+
+    private void TogglePromotionBranch(string branchId)
+    {
+        var existing = currentPromo.AvailableBranchIds.FirstOrDefault(selected =>
+            string.Equals(selected, branchId, StringComparison.OrdinalIgnoreCase));
+
+        if (existing == null)
+            currentPromo.AvailableBranchIds.Add(branchId);
+        else if (!string.Equals(currentPromo.BranchID, branchId, StringComparison.OrdinalIgnoreCase))
+            currentPromo.AvailableBranchIds.Remove(existing);
+    }
+
+    private static void ApplyFormToPackageRule(
+        Inventory_PackageItemDM rule,
+        PromotionSetupModel form,
+        string? packageId,
+        bool isNew)
+    {
+        rule.PackageID = packageId;
+        rule.Quantity = form.MinQuantity;
+        rule.UnitPrice = form.UnitPrice;
+        rule.TotalPrice = form.TotalPrice;
+        rule.UnitActualValue = form.DiscountValue;
+        rule.TotalActualValue = form.TotalActualValue;
+        rule.PromotionMethod = GetPromotionMethodId(form.PromoMethod);
+        rule.PromoCondition = GetPromotionConditionId(form.PromoCondition);
+        rule.PromoConditionAmt = form.PromoConditionAmount;
+        rule.MaxQuantity = form.MaxLimitPerOrder;
+        rule.RoundingOption = GetRoundingId(form.Rounding);
+        rule.PackageQuantityTypeID = form.PackageQuantityTypeID;
+        rule.OptionItems = form.OptionItems;
+        rule.OptionGroups = form.OptionGroups;
+        rule.OptionBrands = form.OptionBrands;
+        rule.HeaderCaption = form.HeaderCaption;
+        rule.CustomRules = form.CustomRules;
+        rule.IsConfirmed = form.IsConfirmed;
+        rule.IsDeferred = form.IsDeferred;
+        rule.IsVoided = false;
+        rule.IsDirty = true;
+        rule.SaveAction = isNew || string.IsNullOrWhiteSpace(rule.AutoID)
+            ? EBI.Enum.EntityState.Added
+            : EBI.Enum.EntityState.Changed;
+    }
+
+    private void ConfirmDelete(PromotionSetupModel promo)
+    {
+        promoToDelete = promo;
+        showDeleteModal = true;
+    }
+
+    private async Task ExecuteDelete()
+    {
+        if (promoToDelete == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(promoToDelete.MasterAccountID))
+        {
+            errorMessage = "The promotion has no InventoryFull account ID and cannot be deleted.";
+            showDeleteModal = false;
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var (success, message) = await InventorySvc.DeleteItemAsync(promoToDelete.MasterAccountID);
+            if (!success)
+            {
+                errorMessage = string.IsNullOrWhiteSpace(message)
+                    ? "The promotion could not be deleted by InventoryFull."
+                    : $"The promotion could not be deleted: {message}";
+                showDeleteModal = false;
+                return;
+            }
+
+            var deletedName = promoToDelete.Name;
+            showDeleteModal = false;
+            showModal = false;
+            promoToDelete = null;
+            await LoadPromotions();
+            saveMessage = $"{deletedName} was deleted successfully.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"The promotion could not be deleted: {ex.Message}";
+            showDeleteModal = false;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    // Touch Keypad Methods
+    private void OpenKeypad(string field, object? currentVal, string title)
+    {
+        keypadField = field;
+        keypadTitle = title;
+        keypadValueString = currentVal switch
+        {
+            decimal d => d == 0 ? "0" : d.ToString("0.##"),
+            int i => i.ToString(),
+            _ => "0"
+        };
+        showKeypad = true;
+    }
+
+    private void KeypadAppend(string val)
+    {
+        if (keypadValueString == "0" && val != ".")
+            keypadValueString = val;
+        else if (!(val == "." && keypadValueString.Contains(".")))
+            keypadValueString += val;
+    }
+
+    private void KeypadClear() => keypadValueString = "0";
+
+    private void KeypadBackspace()
+    {
+        if (keypadValueString.Length > 1)
+            keypadValueString = keypadValueString.Substring(0, keypadValueString.Length - 1);
+        else
+            keypadValueString = "0";
+    }
+
+    private void KeypadSave()
+    {
+        if (keypadField == "DiscountValue" && decimal.TryParse(keypadValueString, out var dVal))
+        {
+            currentPromo.DiscountValue = dVal;
+        }
+        else if (keypadField == "MinQuantity" && int.TryParse(keypadValueString, out var mQty))
+        {
+            currentPromo.MinQuantity = Math.Max(1, mQty);
+        }
+        else if (keypadField == "MaxLimitPerOrder" && int.TryParse(keypadValueString, out var mLim))
+        {
+            currentPromo.MaxLimitPerOrder = Math.Max(0, mLim);
+        }
+        showKeypad = false;
+    }
+
+    private void CloseKeypad() => showKeypad = false;
+}

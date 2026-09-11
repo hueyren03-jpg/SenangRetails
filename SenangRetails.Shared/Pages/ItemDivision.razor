@@ -1,0 +1,548 @@
+@page "/item-division"
+@page "/itemdivision"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using SenangRetails.Shared.Models.DTOs
+@using SenangRetails.Shared.Services.ItemDivisionService
+@inject IItemDivisionService ItemDivisionService
+@inject NavigationManager Navigation
+
+<div class="section-container item-division-page">
+
+    <!-- Header -->
+    <div class="section-header">
+        <div class="header-left">
+            <div class="header-nav-row">
+                @if (ShowRestoreButton)
+                {
+                    <button type="button" class="mobile-menu-btn" @onclick="TriggerToggleSidebar" title="Toggle Menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                }
+                <button type="button" class="back-button" @onclick="GoBack">
+                    <i class="fa-solid fa-chevron-left"></i>
+                    <span>@LangSvc.GetText("MenuBack")</span>
+                </button>
+            </div>
+            <h2>Item Division</h2>
+            <p>Manage product divisions and categories</p>
+        </div>
+        <div class="header-right">
+            <button type="button" class="add-btn" @onclick="OpenAddModal">
+                <i class="fa-solid fa-plus"></i>
+                <span>Add Division</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    @if (!string.IsNullOrEmpty(notificationMessage))
+    {
+        <div class="@ToastClass" role="alert">
+            <i class="fa-solid @ToastIcon"></i>
+            <span>@notificationMessage</span>
+            <button type="button" class="alert-close-btn" @onclick='() => notificationMessage = ""'>✕</button>
+        </div>
+    }
+
+    <!-- List Card -->
+    <div class="point-section">
+        <div class="section-title-row-with-action">
+            <h3>Divisions</h3>
+            <span class="rule-count-text">@FilteredDivisions.Count() division(s)</span>
+        </div>
+
+        <!-- Search & Filter -->
+        <div class="search-toolbar-row">
+            <div class="staff-search-wrap">
+                <i class="fa-solid fa-magnifying-glass staff-search-icon"></i>
+                <input type="text"
+                       class="staff-search-input"
+                       placeholder="Search division code or name..."
+                       @bind="searchQuery"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <button type="button" class="search-clear-btn" @onclick='() => searchQuery = ""'>✕</button>
+                }
+            </div>
+
+            <div class="filter-pills-wrap">
+                <button type="button" class="@PillClass("All")" @onclick='() => statusFilter = "All"'>
+                    All (@divisions.Count)
+                </button>
+                <button type="button" class="@PillClass("Active")" @onclick='() => statusFilter = "Active"'>
+                    Active (@divisions.Count(d => d.Active))
+                </button>
+                <button type="button" class="@PillClass("Inactive")" @onclick='() => statusFilter = "Inactive"'>
+                    Inactive (@divisions.Count(d => !d.Active))
+                </button>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="loading-spinner"></div>
+                <span>Loading item divisions...</span>
+            </div>
+        }
+        else if (!FilteredDivisions.Any())
+        {
+            <div class="empty-state">
+                <div class="empty-icon-wrap">
+                    <i class="fa-solid fa-sitemap"></i>
+                </div>
+                <h4>No item divisions found</h4>
+                @if (!string.IsNullOrEmpty(searchQuery) || statusFilter != "All")
+                {
+                    <p>No results match your search criteria.</p>
+                    <button type="button" class="btn-clear-filters" @onclick="ClearFilters">Clear Filters</button>
+                }
+                else
+                {
+                    <p>Start organizing your catalog by adding your first division.</p>
+                    <button type="button" class="add-btn empty-action-btn" @onclick="OpenAddModal">
+                        <i class="fa-solid fa-plus"></i> Add Division
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="list-container">
+                <div class="list-header">
+                    <span class="align-left sortable-cell" @onclick='() => SortBy("Code")'>
+                        Division Code
+                        @if (sortColumn == "Code") { <span class="sort-caret">@(sortAscending ? "▲" : "▼")</span> }
+                    </span>
+                    <span class="align-left sortable-cell" @onclick='() => SortBy("Name")'>
+                        Division Name
+                        @if (sortColumn == "Name") { <span class="sort-caret">@(sortAscending ? "▲" : "▼")</span> }
+                    </span>
+                    <span class="align-center sortable-cell" @onclick='() => SortBy("Active")'>
+                        Active
+                        @if (sortColumn == "Active") { <span class="sort-caret">@(sortAscending ? "▲" : "▼")</span> }
+                    </span>
+                    <span class="align-center">Actions</span>
+                </div>
+
+                @foreach (var item in FilteredDivisions)
+                {
+                    <div class="@RowClass(item)" @onclick="() => OpenEditModal(item)">
+
+                        <span class="cell align-left" data-label="Division Code">
+                            <span class="id-code-badge">@item.Code</span>
+                        </span>
+
+                        <span class="cell align-left" data-label="Division Name">
+                            <span class="id-desc-text">@item.Name</span>
+                        </span>
+
+                        <span class="cell align-center" data-label="Active" @onclick:stopPropagation>
+                            <div class="active-cell-wrap">
+                                <div class="@TickClass(item.Active)" @onclick="() => ToggleItemActive(item)" title="Toggle active">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </div>
+                                <span class="@BadgeClass(item.Active)">@(item.Active ? "Active" : "Inactive")</span>
+                            </div>
+                        </span>
+
+                        <span class="cell align-center" data-label="Actions" @onclick:stopPropagation>
+                            <div class="action-buttons-wrap">
+                                <button type="button" class="pt-action-btn" title="Edit" @onclick="() => OpenEditModal(item)">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                                <button type="button" class="pt-action-btn pt-delete-btn" title="Delete" @onclick="() => RequestDelete(item)">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </span>
+
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Add / Edit Modal -->
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="division-modal-box" @onclick:stopPropagation>
+
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <div class="modal-icon-badge">
+                        <i class="fa-solid fa-sitemap"></i>
+                    </div>
+                    <h3>@(isEditing ? "Edit Division" : "Add Division")</h3>
+                </div>
+                <button type="button" class="modal-close-btn" @onclick="CloseModal" aria-label="Close">✕</button>
+            </div>
+
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(formError))
+                {
+                    <div class="form-error-banner">
+                        <i class="fa-solid fa-circle-exclamation"></i>
+                        <span>@formError</span>
+                    </div>
+                }
+
+                @if (isEditing && !string.IsNullOrEmpty(currentModel.Code))
+                {
+                    <div class="form-group">
+                        <label class="form-label">Division ID</label>
+                        <input type="text" class="form-control locked-control" value="@currentModel.Code" readonly disabled />
+                    </div>
+                }
+
+                <div class="form-group">
+                    <label class="form-label" for="divName">Division Name <span class="required">*</span></label>
+                    <input type="text"
+                           id="divName"
+                           class="form-control"
+                           placeholder="Enter division name"
+                           maxlength="255"
+                           @bind="currentModel.Name" />
+                </div>
+
+                <div class="form-group">
+                    <div class="active-toggle-row" @onclick="ToggleFormActive">
+                        <div class="@FormTickClass">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </div>
+                        <div class="checkbox-label-text">
+                            <span class="label-primary">Active</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" @onclick="CloseModal" disabled="@isSaving">Cancel</button>
+                <button type="button" class="btn-save" @onclick="SaveDivision" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <span class="spinner-inline"></span>
+                        <span>Saving...</span>
+                    }
+                    else
+                    {
+                        <span>Save</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (showDeleteConfirm && itemToDelete != null)
+{
+    <div class="modal-overlay" @onclick="CancelDelete">
+        <div class="division-modal-box confirm-modal-box" @onclick:stopPropagation>
+
+            <div class="modal-header confirm-header">
+                <div class="delete-icon-badge">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <h3>Delete Division</h3>
+            </div>
+
+            <div class="modal-body confirm-body">
+                <p>Are you sure you want to delete this division?</p>
+                <div class="delete-item-preview">
+                    <span class="id-code-badge">@itemToDelete.Code</span>
+                    <strong>@itemToDelete.Name</strong>
+                </div>
+                <p class="warning-note">This action cannot be undone.</p>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn-cancel" @onclick="CancelDelete" disabled="@isDeleting">Cancel</button>
+                <button type="button" class="btn-delete-confirm" @onclick="ConfirmDelete" disabled="@isDeleting">
+                    @if (isDeleting)
+                    {
+                        <span class="spinner-inline"></span>
+                        <span>Deleting...</span>
+                    }
+                    else
+                    {
+                        <span>Delete</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnToggleSidebar { get; set; }
+    [Parameter] public bool ShowRestoreButton { get; set; } = false;
+
+    private List<ItemDivisionModel> divisions = new();
+    private bool isLoading = true;
+    private string searchQuery = "";
+    private string statusFilter = "All";
+    private string sortColumn = "Code";
+    private bool sortAscending = true;
+
+    private bool showModal = false;
+    private bool isEditing = false;
+    private ItemDivisionModel currentModel = new();
+    private string formError = "";
+    private bool isSaving = false;
+
+    private bool showDeleteConfirm = false;
+    private ItemDivisionModel? itemToDelete = null;
+    private bool isDeleting = false;
+
+    private string notificationMessage = "";
+    private string notificationType = "success";
+
+    // ── CSS helpers (avoids Razor quote-inside-attribute issues) ──────────────
+    private string PillClass(string filter) =>
+        statusFilter == filter ? "filter-pill active" : "filter-pill";
+
+    private string RowClass(ItemDivisionModel item) =>
+        item.Active ? "list-item" : "list-item item-inactive";
+
+    private string TickClass(bool active) =>
+        active ? "custom-tick-checkbox checked" : "custom-tick-checkbox";
+
+    private string BadgeClass(bool active) =>
+        active ? "status-badge badge-active" : "status-badge badge-inactive";
+
+    private string FormTickClass =>
+        currentModel.Active ? "custom-tick-checkbox checked" : "custom-tick-checkbox";
+
+    private string ToastClass =>
+        notificationType == "error" ? "alert-toast alert-error" : "alert-toast alert-success";
+
+    private string ToastIcon =>
+        notificationType == "error" ? "fa-circle-exclamation" : "fa-circle-check";
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDivisionsAsync();
+    }
+
+    private async Task LoadDivisionsAsync()
+    {
+        isLoading = true;
+        try
+        {
+            divisions = await ItemDivisionService.GetDivisionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ItemDivision] Error: {ex.Message}");
+            divisions = new();
+            ShowNotification("Failed to load item divisions.", isError: true);
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private IEnumerable<ItemDivisionModel> FilteredDivisions
+    {
+        get
+        {
+            var query = divisions.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                var q = searchQuery.Trim();
+                query = query.Where(d =>
+                    (d.Code?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (d.Name?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            if (statusFilter == "Active")
+                query = query.Where(d => d.Active);
+            else if (statusFilter == "Inactive")
+                query = query.Where(d => !d.Active);
+
+            return sortColumn switch
+            {
+                "Name" => sortAscending
+                    ? query.OrderBy(d => d.Name).ThenBy(d => d.Code)
+                    : query.OrderByDescending(d => d.Name).ThenBy(d => d.Code),
+                "Active" => sortAscending
+                    ? query.OrderBy(d => d.Active).ThenBy(d => d.Name)
+                    : query.OrderByDescending(d => d.Active).ThenBy(d => d.Name),
+                _ => sortAscending
+                    ? query.OrderBy(d => d.Code)
+                    : query.OrderByDescending(d => d.Code)
+            };
+        }
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortColumn == column)
+            sortAscending = !sortAscending;
+        else { sortColumn = column; sortAscending = true; }
+    }
+
+    private void ClearFilters() { searchQuery = ""; statusFilter = "All"; }
+
+    private void OpenAddModal()
+    {
+        isEditing = false;
+        formError = "";
+        currentModel = new ItemDivisionModel { Id = "", Code = "", Name = "", Active = true };
+        showModal = true;
+    }
+
+    private void OpenEditModal(ItemDivisionModel item)
+    {
+        isEditing = true;
+        formError = "";
+        currentModel = new ItemDivisionModel
+        {
+            Id = item.Id,
+            Code = item.Code,
+            Name = item.Name,
+            Active = item.Active,
+            Sequence = item.Sequence,
+            CreatedDateTime = item.CreatedDateTime
+        };
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        if (isSaving) return;
+        showModal = false;
+        formError = "";
+    }
+
+    private void ToggleFormActive() => currentModel.Active = !currentModel.Active;
+
+    private async Task ToggleItemActive(ItemDivisionModel item)
+    {
+        item.Active = !item.Active;
+        var (success, _) = await ItemDivisionService.SaveDivisionAsync(item);
+        if (success)
+            ShowNotification($"'{item.Name}' is now {(item.Active ? "Active" : "Inactive")}.");
+        else
+        {
+            item.Active = !item.Active;
+            ShowNotification("Failed to update status.", isError: true);
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveDivision()
+    {
+        formError = "";
+
+        if (string.IsNullOrWhiteSpace(currentModel.Name))
+        {
+            formError = "Division Name is required.";
+            return;
+        }
+
+        var duplicate = divisions.FirstOrDefault(d =>
+            d.Id != currentModel.Id &&
+            d.Name.Equals(currentModel.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (duplicate != null)
+        {
+            formError = $"Division '{currentModel.Name.Trim()}' already exists.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            currentModel.Name = currentModel.Name.Trim();
+
+            var (success, message) = await ItemDivisionService.SaveDivisionAsync(currentModel);
+            if (success)
+            {
+                showModal = false;
+                await LoadDivisionsAsync();
+                ShowNotification(isEditing ? $"Updated '{currentModel.Name}'." : $"Added '{currentModel.Name}'.");
+            }
+            else
+            {
+                formError = string.IsNullOrWhiteSpace(message) ? "Failed to save division." : message;
+            }
+        }
+        catch (Exception ex)
+        {
+            formError = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void RequestDelete(ItemDivisionModel item) { itemToDelete = item; showDeleteConfirm = true; }
+
+    private void CancelDelete()
+    {
+        if (isDeleting) return;
+        showDeleteConfirm = false;
+        itemToDelete = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (itemToDelete == null) return;
+        isDeleting = true;
+        try
+        {
+            var (success, message) = await ItemDivisionService.DeleteDivisionAsync(itemToDelete.Id);
+            if (success)
+            {
+                showDeleteConfirm = false;
+                var code = itemToDelete.Code;
+                itemToDelete = null;
+                await LoadDivisionsAsync();
+                ShowNotification($"Deleted '{code}'.");
+            }
+            else
+            {
+                ShowNotification(string.IsNullOrWhiteSpace(message) ? "Failed to delete." : message, isError: true);
+            }
+        }
+        catch (Exception ex) { ShowNotification($"Error: {ex.Message}", isError: true); }
+        finally { isDeleting = false; StateHasChanged(); }
+    }
+
+    private void ShowNotification(string msg, bool isError = false)
+    {
+        notificationMessage = msg;
+        notificationType = isError ? "error" : "success";
+        _ = AutoDismissNotification();
+    }
+
+    private async Task AutoDismissNotification()
+    {
+        await Task.Delay(4000);
+        notificationMessage = "";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TriggerToggleSidebar()
+    {
+        if (OnToggleSidebar.HasDelegate)
+            await OnToggleSidebar.InvokeAsync();
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/menu");
+}
