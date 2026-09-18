@@ -586,6 +586,48 @@ namespace SenangRetails.Shared.ApiClient
                     "api/Doc_Stock_GRN/CreateRecord", request);
         }
 
+        // Goods Issue Note (GIN) API — mirrors the GRN integration pattern.
+        public async Task<ApiResponseRoot<string>?> DocStockGINCreateRecord(EBI.UC.Doc_Stock_GIN request)
+        {
+            if (!await SetBearerToken()) return null;
+            return await PostAsync<EBI.UC.Doc_Stock_GIN, ApiResponseRoot<string>>(
+                "api/Doc_Stock_GIN/CreateRecord", request);
+        }
+
+        public async Task<ApiResponseRoot<string>?> DocStockGINUpdateRecord(EBI.UC.Doc_Stock_GIN request)
+        {
+            if (!await SetBearerToken()) return null;
+            return await PutAsync<EBI.UC.Doc_Stock_GIN, ApiResponseRoot<string>>(
+                "api/Doc_Stock_GIN/UpdateRecord", request);
+        }
+
+        public async Task<ApiResponseRoot<EBI.UC.Doc_Stock_GIN>?> DocStockGINLoadRecord(string documentId)
+        {
+            if (!await SetBearerToken()) return null;
+            return await PostAsync<object, ApiResponseRoot<EBI.UC.Doc_Stock_GIN>>(
+                "api/Doc_Stock_GIN/LoadRecord", new { id = documentId });
+        }
+
+        public async Task<ApiResponseRoot<List<Doc_Stock_GINDM>>?> DocStockGINLoadProxy(
+            string branchId,
+            DateTime startDate,
+            DateTime endDate,
+            int pageNumber,
+            int pageSize)
+        {
+            if (!await SetBearerToken()) return null;
+            return await PostAsync<object, ApiResponseRoot<List<Doc_Stock_GINDM>>>(
+                "api/Doc_Stock_GIN/LoadProxy",
+                new
+                {
+                    branchID = branchId,
+                    startDate,
+                    endDate,
+                    pageNumber,
+                    pageSize
+                });
+        }
+
         public async Task<ApiResponseRoot<List<InventoryMovement_PendingAcceptDM>>?> GetPendingAcceptDocumentByBranchId(string? branchId = null)
         {
             if (!await SetBearerToken()) return null;
