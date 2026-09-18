@@ -587,28 +587,28 @@ namespace SenangRetails.Shared.ApiClient
         }
 
         // Goods Issue Note (GIN) API — mirrors the GRN integration pattern.
-        public async Task<ApiResponseRoot<string>?> DocStockGINCreateRecord(EBI.UC.Doc_Stock_GIN request)
+        public async Task<ApiResponseRoot<string>?> DocStockGINCreateRecord(GinDocumentDto request)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<EBI.UC.Doc_Stock_GIN, ApiResponseRoot<string>>(
+            return await PostAsync<GinDocumentDto, ApiResponseRoot<string>>(
                 "api/Doc_Stock_GIN/CreateRecord", request);
         }
 
-        public async Task<ApiResponseRoot<string>?> DocStockGINUpdateRecord(EBI.UC.Doc_Stock_GIN request)
+        public async Task<ApiResponseRoot<string>?> DocStockGINUpdateRecord(GinDocumentDto request)
         {
             if (!await SetBearerToken()) return null;
-            return await PutAsync<EBI.UC.Doc_Stock_GIN, ApiResponseRoot<string>>(
+            return await PutAsync<GinDocumentDto, ApiResponseRoot<string>>(
                 "api/Doc_Stock_GIN/UpdateRecord", request);
         }
 
-        public async Task<ApiResponseRoot<EBI.UC.Doc_Stock_GIN>?> DocStockGINLoadRecord(string documentId)
+        public async Task<ApiResponseRoot<GinDocumentDto>?> DocStockGINLoadRecord(string documentId)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<EBI.UC.Doc_Stock_GIN>>(
+            return await PostAsync<object, ApiResponseRoot<GinDocumentDto>>(
                 "api/Doc_Stock_GIN/LoadRecord", new { id = documentId });
         }
 
-        public async Task<ApiResponseRoot<List<Doc_Stock_GINDM>>?> DocStockGINLoadProxy(
+        public async Task<ApiResponseRoot<List<GinHeaderDto>>?> DocStockGINLoadProxy(
             string branchId,
             DateTime startDate,
             DateTime endDate,
@@ -616,7 +616,7 @@ namespace SenangRetails.Shared.ApiClient
             int pageSize)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<List<Doc_Stock_GINDM>>>(
+            return await PostAsync<object, ApiResponseRoot<List<GinHeaderDto>>>(
                 "api/Doc_Stock_GIN/LoadProxy",
                 new
                 {
