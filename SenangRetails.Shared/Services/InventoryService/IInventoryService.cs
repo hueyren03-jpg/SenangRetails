@@ -30,7 +30,7 @@ namespace SenangRetails.Shared.Services.InventoryService
         Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(GinDocumentDto request);
         Task<(bool Success, string Message)> UpdateStockGINAsync(GinDocumentDto request);
         Task<GinDocumentDto?> GetStockGINRecordAsync(string documentId);
-        Task<List<Doc_Stock_GINDM>?> GetStockGINRecordsAsync(
+        Task<List<Doc_Stock_GRNDM>?> GetStockGINRecordsAsync(
             string branchId,
             DateTime startDate,
             DateTime endDate,
