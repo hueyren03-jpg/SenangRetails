@@ -342,7 +342,7 @@ namespace SenangRetails.Shared.Services.InventoryService
             return false;
         }
 
-        public async Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(Doc_Stock_GIN request)
+        public async Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(GinDocumentDto request)
         {
             var response = await _ac.DocStockGINCreateRecord(request);
             if (response == null)
@@ -358,7 +358,7 @@ namespace SenangRetails.Shared.Services.InventoryService
                 null);
         }
 
-        public async Task<(bool Success, string Message)> UpdateStockGINAsync(Doc_Stock_GIN request)
+        public async Task<(bool Success, string Message)> UpdateStockGINAsync(GinDocumentDto request)
         {
             var response = await _ac.DocStockGINUpdateRecord(request);
             if (response == null)
@@ -372,13 +372,13 @@ namespace SenangRetails.Shared.Services.InventoryService
                 string.IsNullOrWhiteSpace(response.message) ? $"GIN API returned {response.statusCode}." : response.message);
         }
 
-        public async Task<Doc_Stock_GIN?> GetStockGINRecordAsync(string documentId)
+        public async Task<GinDocumentDto?> GetStockGINRecordAsync(string documentId)
         {
             var response = await _ac.DocStockGINLoadRecord(documentId);
             return response?.statusCode == 200 ? response.result : null;
         }
 
-        public async Task<List<Doc_Stock_GINDM>?> GetStockGINRecordsAsync(
+        public async Task<List<GinHeaderDto>?> GetStockGINRecordsAsync(
             string branchId,
             DateTime startDate,
             DateTime endDate,
