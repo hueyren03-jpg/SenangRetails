@@ -653,10 +653,10 @@ namespace SenangRetails.Shared.ApiClient
                 );
         }
 
-        public async Task<ApiResponseRoot<string>> CreateStockTransferAsync(Doc_StockTransfer request)
+        public async Task<ApiResponseRoot<StockTransferApiResult>?> CreateStockTransferAsync(Doc_StockTransfer request)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<Doc_StockTransfer, ApiResponseRoot<string>>(
+            return await PostAsync<Doc_StockTransfer, ApiResponseRoot<StockTransferApiResult>>(
                 "api/Doc_StockTransfer/CreateRecord", request);
         }
 
@@ -679,10 +679,10 @@ namespace SenangRetails.Shared.ApiClient
                 });
         }
 
-        public async Task<ApiResponseRoot<string>> UpdateStockTransferAsync(Doc_StockTransfer request)
+        public async Task<ApiResponseRoot<StockTransferApiResult>?> UpdateStockTransferAsync(Doc_StockTransfer request)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<Doc_StockTransfer, ApiResponseRoot<string>>(
+            return await PostAsync<Doc_StockTransfer, ApiResponseRoot<StockTransferApiResult>>(
                 "api/Doc_StockTransfer/UpdateRecord", request);
         }
 
