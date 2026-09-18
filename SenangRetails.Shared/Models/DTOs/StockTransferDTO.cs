@@ -5,6 +5,13 @@ using System.Linq;
 namespace SenangRetails.Shared.Models.DTOs
 {
 
+    public sealed class StockTransferApiResult
+    {
+        public string? Id { get; set; }
+        public string? DisplayCode { get; set; }
+        public string? SuccessMessage { get; set; }
+    }
+
     public sealed class StockTransferSaveResult
     {
         public bool TransferSaved { get; init; }
