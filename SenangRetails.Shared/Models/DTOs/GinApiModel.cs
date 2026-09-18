@@ -5,7 +5,7 @@ namespace SenangRetails.Shared.Models.DTOs;
 
 /// <summary>
 /// Wrapper matching the Doc_Stock_GIN API contract.
-/// Uses the available EBI stock-document header model. The current EBI.DM assembly does not expose Doc_Stock_GINDM.
+/// Uses the available EBI stock-document header model for the GIN API payload.
 /// </summary>
 public sealed class GinDocumentDto
 {
