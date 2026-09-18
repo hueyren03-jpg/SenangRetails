@@ -72,16 +72,20 @@
 
   <ItemGroup>
     <Reference Include="EBIDM">
-      <HintPath>..\SenangRetails.Shared\EBIDM.dll</HintPath>
+      <HintPath>..\SenangRetails.Shared\Libraries\EBI\EBIDM.dll</HintPath>
+      <Private>true</Private>
     </Reference>
     <Reference Include="EBIEF">
-      <HintPath>..\SenangRetails.Shared\EBIEF.dll</HintPath>
+      <HintPath>..\SenangRetails.Shared\Libraries\EBI\EBIEF.dll</HintPath>
+      <Private>true</Private>
     </Reference>
     <Reference Include="EBIEnum">
-      <HintPath>..\SenangRetails.Shared\EBIEnum.dll</HintPath>
+      <HintPath>..\SenangRetails.Shared\Libraries\EBI\EBIEnum.dll</HintPath>
+      <Private>true</Private>
     </Reference>
     <Reference Include="EBIUC">
-      <HintPath>..\SenangRetails.Shared\EBIUC.dll</HintPath>
+      <HintPath>..\SenangRetails.Shared\Libraries\EBI\EBIUC.dll</HintPath>
+      <Private>true</Private>
     </Reference>
   </ItemGroup>
 
