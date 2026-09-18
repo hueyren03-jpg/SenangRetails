@@ -378,7 +378,7 @@ namespace SenangRetails.Shared.Services.InventoryService
             return response?.statusCode == 200 ? response.result : null;
         }
 
-        public async Task<List<GinHeaderDto>?> GetStockGINRecordsAsync(
+        public async Task<List<Doc_Stock_GINDM>?> GetStockGINRecordsAsync(
             string branchId,
             DateTime startDate,
             DateTime endDate,
