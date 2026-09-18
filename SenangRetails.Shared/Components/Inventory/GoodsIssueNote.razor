@@ -3,6 +3,7 @@
 @using EBI.DM
 @using SenangRetails.Shared.Services
 @using SenangRetails.Shared.Services.InventoryService
+@using SenangRetails.Shared.Models.DTOs
 @inject IInventoryService InventoryService
 @inject AppState AppState
 @inject NavigationManager Navigation
@@ -319,10 +320,10 @@
 
     private List<GinDocumentSummary> documents = [];
     private List<InventoryDM> availableItems = [];
-    private readonly List<DocumentLineTableDM> deletedServerLines = [];
+    private readonly List<GinLineDto> deletedServerLines = [];
 
     private GinDraft draft = new();
-    private EBI.UC.Doc_Stock_GIN? loadedGin;
+    private GinDocumentDto? loadedGin;
     private bool isEditorOpen;
     private bool isEditingExisting;
     private bool showItemPicker;
@@ -472,7 +473,7 @@
         }
     }
 
-    private void ApplyRecordToDraft(EBI.UC.Doc_Stock_GIN record)
+    private void ApplyRecordToDraft(GinDocumentDto record)
     {
         var header = record.mobjDoc_Stock_GIN;
 
@@ -491,13 +492,13 @@
             Remarks = header.Remarks ?? string.Empty,
             Status = header.IsVoid ? GinStatus.Void : GinStatus.Posted,
             Lines = (record.lstDocumentLine ?? [])
-                .Where(line => line.SaveAction != EBI.Enum.EntityState.Deleted)
+                .Where(line => !string.Equals(line.SaveAction, "Deleted", StringComparison.OrdinalIgnoreCase))
                 .Select(ToDraftLine)
                 .ToList()
         };
     }
 
-    private GinLine ToDraftLine(DocumentLineTableDM line)
+    private GinLine ToDraftLine(GinLineDto line)
     {
         var itemId = line.InventoryItemAccountID ?? line.LineItemID ?? string.Empty;
         var inventory = availableItems.FirstOrDefault(item =>
@@ -623,7 +624,7 @@
     {
         if (line.Source != null && !string.IsNullOrWhiteSpace(line.Source.DocumentLineID))
         {
-            line.Source.SaveAction = EBI.Enum.EntityState.Deleted;
+            line.Source.SaveAction = "Deleted";
             line.Source.IsDirty = true;
             deletedServerLines.Add(line.Source);
         }
@@ -721,11 +722,11 @@
         }
     }
 
-    private EBI.UC.Doc_Stock_GIN BuildGINRequest()
+    private GinDocumentDto BuildGINRequest()
     {
         var request = isEditingExisting && loadedGin != null
             ? loadedGin
-            : new EBI.UC.Doc_Stock_GIN();
+            : new GinDocumentDto();
 
         var header = request.mobjDoc_Stock_GIN;
         header.BranchID = draft.BranchId;
@@ -737,9 +738,7 @@
         header.Remarks = draft.Remarks;
         header.StockActivityType = draft.Activity;
         header.GroupID = AppState.SelectedBranchGroupID;
-        header.SaveAction = isEditingExisting
-            ? EBI.Enum.EntityState.Changed
-            : EBI.Enum.EntityState.Added;
+        header.SaveAction = isEditingExisting ? "Changed" : "Added";
         header.IsDirty = true;
 
         request.lstDocumentLine.Clear();
@@ -747,7 +746,7 @@
         var lineOrder = 0;
         foreach (var line in draft.Lines)
         {
-            var row = line.Source ?? new DocumentLineTableDM();
+            var row = line.Source ?? new GinLineDto();
 
             row.LineOrder = lineOrder++;
             row.Description = line.ItemName;
@@ -764,9 +763,7 @@
             row.EditBranchID = draft.BranchId;
             row.GroupID = AppState.SelectedBranchGroupID;
             row.FinancialDate = draft.FinancialDate;
-            row.SaveAction = line.Source == null
-                ? EBI.Enum.EntityState.Added
-                : EBI.Enum.EntityState.Changed;
+            row.SaveAction = line.Source == null ? "Added" : "Changed";
             row.IsDirty = true;
 
             request.lstDocumentLine.Add(row);
@@ -774,7 +771,7 @@
 
         foreach (var deletedLine in deletedServerLines)
         {
-            deletedLine.SaveAction = EBI.Enum.EntityState.Deleted;
+            deletedLine.SaveAction = "Deleted";
             deletedLine.IsDirty = true;
             request.lstDocumentLine.Add(deletedLine);
         }
@@ -867,7 +864,7 @@
 
     private sealed class GinLine
     {
-        public DocumentLineTableDM? Source { get; set; }
+        public GinLineDto? Source { get; set; }
         public string ItemId { get; set; } = string.Empty;
         public string ItemCode { get; set; } = string.Empty;
         public string ItemName { get; set; } = string.Empty;
