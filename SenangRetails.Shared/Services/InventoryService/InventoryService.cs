@@ -445,7 +445,8 @@ namespace SenangRetails.Shared.Services.InventoryService
                 };
             }
 
-            var ginResult = await UpsertGinForStockTransferAsync(request, transferDocumentId);
+            var savedTransfer = await GetStockTransferRecordAsync(transferDocumentId) ?? request;
+            var ginResult = await UpsertGinForStockTransferAsync(savedTransfer, transferDocumentId);
 
             return new StockTransferSaveResult
             {
@@ -514,7 +515,8 @@ namespace SenangRetails.Shared.Services.InventoryService
                 };
             }
 
-            var ginResult = await UpsertGinForStockTransferAsync(request, transferDocumentId);
+            var savedTransfer = await GetStockTransferRecordAsync(transferDocumentId) ?? request;
+            var ginResult = await UpsertGinForStockTransferAsync(savedTransfer, transferDocumentId);
 
             return new StockTransferSaveResult
             {
@@ -562,6 +564,13 @@ namespace SenangRetails.Shared.Services.InventoryService
             {
                 existingGinDocumentId = linkedHeader.DocumentID;
                 existingGin = await GetStockGINRecordAsync(linkedHeader.DocumentID);
+
+                if (existingGin == null)
+                {
+                    return (false,
+                        "A related GIN already exists, but its full record could not be loaded. No duplicate GIN was created.",
+                        existingGinDocumentId);
+                }
             }
 
             var ginRequest = BuildGinForStockTransfer(transfer, transferDocumentId, existingGin);
@@ -592,7 +601,11 @@ namespace SenangRetails.Shared.Services.InventoryService
                 ? DateTime.Now
                 : transfer.objDoc_StockTransfer.FinancialDate;
 
-            var totalValue = transfer.lstDocumentLine.Sum(line => line.Quantity * line.UnitPrice);
+            var activeTransferLines = transfer.lstDocumentLine
+                .Where(line => line.SaveAction != EntityState.Deleted)
+                .ToList();
+
+            var totalValue = activeTransferLines.Sum(line => line.Quantity * line.UnitPrice);
 
             header.DocumentTypeID = (int)EnumDocumentType.GIN;
             header.BranchID = sourceBranchId;
@@ -618,7 +631,7 @@ namespace SenangRetails.Shared.Services.InventoryService
             request.lstDocumentLine.Clear();
 
             var lineOrder = 0;
-            foreach (var transferLine in transfer.lstDocumentLine)
+            foreach (var transferLine in activeTransferLines)
             {
                 var itemId = !string.IsNullOrWhiteSpace(transferLine.InventoryItemAccountID)
                     ? transferLine.InventoryItemAccountID
