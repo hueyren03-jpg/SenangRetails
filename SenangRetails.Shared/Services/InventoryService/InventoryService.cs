@@ -342,6 +342,53 @@ namespace SenangRetails.Shared.Services.InventoryService
             return false;
         }
 
+        public async Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(Doc_Stock_GIN request)
+        {
+            var response = await _ac.DocStockGINCreateRecord(request);
+            if (response == null)
+                return (false, "No response from the GIN API.", null);
+
+            if (response.statusCode is >= 200 and < 300)
+                return (true,
+                    string.IsNullOrWhiteSpace(response.message) ? "GIN created successfully." : response.message,
+                    response.result);
+
+            return (false,
+                string.IsNullOrWhiteSpace(response.message) ? $"GIN API returned {response.statusCode}." : response.message,
+                null);
+        }
+
+        public async Task<(bool Success, string Message)> UpdateStockGINAsync(Doc_Stock_GIN request)
+        {
+            var response = await _ac.DocStockGINUpdateRecord(request);
+            if (response == null)
+                return (false, "No response from the GIN API.");
+
+            if (response.statusCode is >= 200 and < 300)
+                return (true,
+                    string.IsNullOrWhiteSpace(response.message) ? "GIN updated successfully." : response.message);
+
+            return (false,
+                string.IsNullOrWhiteSpace(response.message) ? $"GIN API returned {response.statusCode}." : response.message);
+        }
+
+        public async Task<Doc_Stock_GIN?> GetStockGINRecordAsync(string documentId)
+        {
+            var response = await _ac.DocStockGINLoadRecord(documentId);
+            return response?.statusCode == 200 ? response.result : null;
+        }
+
+        public async Task<List<Doc_Stock_GINDM>?> GetStockGINRecordsAsync(
+            string branchId,
+            DateTime startDate,
+            DateTime endDate,
+            int pageNumber,
+            int pageSize)
+        {
+            var response = await _ac.DocStockGINLoadProxy(branchId, startDate, endDate, pageNumber, pageSize);
+            return response?.statusCode == 200 ? response.result : null;
+        }
+
         public async Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentByBranchIdAsync(string? branchId = null)
         {
             var response = await _ac.GetPendingAcceptDocumentByBranchId(branchId);
