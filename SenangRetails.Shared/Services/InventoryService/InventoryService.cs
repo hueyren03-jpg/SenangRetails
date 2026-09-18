@@ -414,10 +414,49 @@ namespace SenangRetails.Shared.Services.InventoryService
             return await _ac.AcceptStockIn(documentId);
         }
 
-        public async Task<bool> CreateStockTransfer(Doc_StockTransfer request)
+        public async Task<StockTransferSaveResult> CreateStockTransfer(Doc_StockTransfer request)
         {
             var response = await _ac.CreateStockTransferAsync(request);
-            return response?.statusCode is >= 200 and < 300;
+            if (response == null)
+            {
+                return new StockTransferSaveResult
+                {
+                    Message = "No response from the Stock Transfer API."
+                };
+            }
+
+            if (response.statusCode is not (>= 200 and < 300))
+            {
+                return new StockTransferSaveResult
+                {
+                    Message = string.IsNullOrWhiteSpace(response.message)
+                        ? $"Stock Transfer API returned {response.statusCode}."
+                        : response.message
+                };
+            }
+
+            var transferDocumentId = response.result;
+            if (string.IsNullOrWhiteSpace(transferDocumentId))
+            {
+                return new StockTransferSaveResult
+                {
+                    TransferSaved = true,
+                    Message = "Stock transfer was created, but the API did not return a document ID, so the GIN could not be linked automatically."
+                };
+            }
+
+            var ginResult = await UpsertGinForStockTransferAsync(request, transferDocumentId);
+
+            return new StockTransferSaveResult
+            {
+                TransferSaved = true,
+                GinSaved = ginResult.Success,
+                TransferDocumentId = transferDocumentId,
+                GinDocumentId = ginResult.DocumentId,
+                Message = ginResult.Success
+                    ? "Stock transfer and GIN created successfully."
+                    : $"Stock transfer was created, but GIN creation failed: {ginResult.Message}"
+            };
         }
 
         public async Task<List<Doc_StockTransfer>?> GetAllStockTransferRecordAsync(
@@ -441,10 +480,196 @@ namespace SenangRetails.Shared.Services.InventoryService
                 .ToList();
         }
 
-        public async Task<bool> UpdateStockTransfer(Doc_StockTransfer request)
+        public async Task<StockTransferSaveResult> UpdateStockTransfer(Doc_StockTransfer request)
         {
             var response = await _ac.UpdateStockTransferAsync(request);
-            return response?.statusCode is >= 200 and < 300;
+            if (response == null)
+            {
+                return new StockTransferSaveResult
+                {
+                    Message = "No response from the Stock Transfer API."
+                };
+            }
+
+            if (response.statusCode is not (>= 200 and < 300))
+            {
+                return new StockTransferSaveResult
+                {
+                    Message = string.IsNullOrWhiteSpace(response.message)
+                        ? $"Stock Transfer API returned {response.statusCode}."
+                        : response.message
+                };
+            }
+
+            var transferDocumentId = !string.IsNullOrWhiteSpace(request.objDoc_StockTransfer.DocumentID)
+                ? request.objDoc_StockTransfer.DocumentID
+                : response.result;
+
+            if (string.IsNullOrWhiteSpace(transferDocumentId))
+            {
+                return new StockTransferSaveResult
+                {
+                    TransferSaved = true,
+                    Message = "Stock transfer was updated, but its document ID is unavailable, so the related GIN could not be synchronized."
+                };
+            }
+
+            var ginResult = await UpsertGinForStockTransferAsync(request, transferDocumentId);
+
+            return new StockTransferSaveResult
+            {
+                TransferSaved = true,
+                GinSaved = ginResult.Success,
+                TransferDocumentId = transferDocumentId,
+                GinDocumentId = ginResult.DocumentId,
+                Message = ginResult.Success
+                    ? "Stock transfer and related GIN updated successfully."
+                    : $"Stock transfer was updated, but GIN synchronization failed: {ginResult.Message}"
+            };
+        }
+
+        private async Task<(bool Success, string Message, string? DocumentId)> UpsertGinForStockTransferAsync(
+            Doc_StockTransfer transfer,
+            string transferDocumentId)
+        {
+            var sourceBranchId = !string.IsNullOrWhiteSpace(transfer.objDoc_StockTransfer.FromBranchID)
+                ? transfer.objDoc_StockTransfer.FromBranchID
+                : transfer.objDoc_StockTransfer.BranchID;
+
+            if (string.IsNullOrWhiteSpace(sourceBranchId))
+                return (false, "The stock transfer does not contain a source branch.", null);
+
+            var financialDate = transfer.objDoc_StockTransfer.FinancialDate == default
+                ? DateTime.Now
+                : transfer.objDoc_StockTransfer.FinancialDate;
+
+            GinDocumentDto? existingGin = null;
+            string? existingGinDocumentId = null;
+
+            var existingHeaders = await GetStockGINRecordsAsync(
+                sourceBranchId,
+                financialDate.Date.AddDays(-1),
+                financialDate.Date.AddDays(2).AddTicks(-1),
+                1,
+                500);
+
+            var linkedHeader = existingHeaders?.FirstOrDefault(header =>
+                (header.CreatedByDocumentTypeID == (int)EnumDocumentType.StockTransfer
+                    && string.Equals(header.CreatedByDocumentID, transferDocumentId, StringComparison.OrdinalIgnoreCase))
+                || string.Equals(header.ReferenceNumber, transferDocumentId, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(linkedHeader?.DocumentID))
+            {
+                existingGinDocumentId = linkedHeader.DocumentID;
+                existingGin = await GetStockGINRecordAsync(linkedHeader.DocumentID);
+            }
+
+            var ginRequest = BuildGinForStockTransfer(transfer, transferDocumentId, existingGin);
+
+            if (existingGin == null)
+            {
+                return await CreateStockGINAsync(ginRequest);
+            }
+
+            var updateResult = await UpdateStockGINAsync(ginRequest);
+            return (updateResult.Success, updateResult.Message, existingGinDocumentId);
+        }
+
+        private GinDocumentDto BuildGinForStockTransfer(
+            Doc_StockTransfer transfer,
+            string transferDocumentId,
+            GinDocumentDto? existingGin)
+        {
+            var request = existingGin ?? new GinDocumentDto();
+            var isUpdate = existingGin != null;
+            var header = request.mobjDoc_Stock_GIN;
+
+            var sourceBranchId = !string.IsNullOrWhiteSpace(transfer.objDoc_StockTransfer.FromBranchID)
+                ? transfer.objDoc_StockTransfer.FromBranchID
+                : transfer.objDoc_StockTransfer.BranchID;
+
+            var financialDate = transfer.objDoc_StockTransfer.FinancialDate == default
+                ? DateTime.Now
+                : transfer.objDoc_StockTransfer.FinancialDate;
+
+            var totalValue = transfer.lstDocumentLine.Sum(line => line.Quantity * line.UnitPrice);
+
+            header.DocumentTypeID = (int)EnumDocumentType.GIN;
+            header.BranchID = sourceBranchId;
+            header.EditBranchID = sourceBranchId;
+            header.FinancialDate = financialDate;
+            header.PostingDate = financialDate;
+            header.IsPostingDateDifferent = false;
+            header.ReferenceNumber = transferDocumentId;
+            header.AccountName = transfer.objDoc_StockTransfer.ToBranch;
+            header.Remarks = transfer.objDoc_StockTransfer.Remarks;
+            header.StockActivityType = "Stock Transfer";
+            header.CreatedByDocumentTypeID = (int)EnumDocumentType.StockTransfer;
+            header.CreatedByDocumentTypeName = "Stock Transfer";
+            header.CreatedByDocumentID = transferDocumentId;
+            header.GroupID = _appState.SelectedBranchGroupID;
+            header.TotalBeforeTax = totalValue;
+            header.TotalAfterTax = totalValue;
+            header.SaveAction = isUpdate ? EntityState.Changed : EntityState.Added;
+            header.IsDirty = true;
+
+            var existingLines = request.lstDocumentLine.ToList();
+            var matchedExistingLines = new HashSet<DocumentLineTableDM>();
+            request.lstDocumentLine.Clear();
+
+            var lineOrder = 0;
+            foreach (var transferLine in transfer.lstDocumentLine)
+            {
+                var itemId = !string.IsNullOrWhiteSpace(transferLine.InventoryItemAccountID)
+                    ? transferLine.InventoryItemAccountID
+                    : transferLine.LineItemID;
+
+                var ginLine = existingLines.FirstOrDefault(line =>
+                    !matchedExistingLines.Contains(line)
+                    && (string.Equals(line.InventoryItemAccountID, itemId, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(line.LineItemID, itemId, StringComparison.OrdinalIgnoreCase)))
+                    ?? new DocumentLineTableDM();
+
+                var lineExists = !string.IsNullOrWhiteSpace(ginLine.DocumentLineID);
+                if (lineExists)
+                    matchedExistingLines.Add(ginLine);
+
+                ginLine.LineOrder = lineOrder++;
+                ginLine.OwnerDocumentTypeID = (int)EnumDocumentType.GIN;
+                ginLine.Description = transferLine.Description;
+                ginLine.ItemName = transferLine.ItemName;
+                ginLine.InventoryTypeID = transferLine.InventoryTypeID;
+                ginLine.InventoryItemAccountID = transferLine.InventoryItemAccountID;
+                ginLine.LineItemID = transferLine.LineItemID;
+                ginLine.Quantity = transferLine.Quantity;
+                ginLine.UnitPrice = transferLine.UnitPrice;
+                ginLine.Cost = transferLine.Cost != 0 ? transferLine.Cost : transferLine.UnitPrice;
+                ginLine.SubTotal = transferLine.Quantity * transferLine.UnitPrice;
+                ginLine.SubTotalBeforeGST = ginLine.SubTotal;
+                ginLine.UnitOfMeasurementID = transferLine.UnitOfMeasurementID;
+                ginLine.SKUQuantity = transferLine.SKUQuantity == 0 ? 1 : transferLine.SKUQuantity;
+                ginLine.BranchID = sourceBranchId;
+                ginLine.EditBranchID = sourceBranchId;
+                ginLine.GroupID = _appState.SelectedBranchGroupID;
+                ginLine.FinancialDate = financialDate;
+                ginLine.SourceDocumentLineID = transferLine.DocumentLineID;
+                ginLine.SaveAction = lineExists ? EntityState.Changed : EntityState.Added;
+                ginLine.IsDirty = true;
+
+                request.lstDocumentLine.Add(ginLine);
+            }
+
+            foreach (var existingLine in existingLines.Where(line => !matchedExistingLines.Contains(line)))
+            {
+                if (string.IsNullOrWhiteSpace(existingLine.DocumentLineID))
+                    continue;
+
+                existingLine.SaveAction = EntityState.Deleted;
+                existingLine.IsDirty = true;
+                request.lstDocumentLine.Add(existingLine);
+            }
+
+            return request;
         }
 
         public async Task<Doc_StockTransfer?> GetStockTransferRecordAsync(string documentId)
