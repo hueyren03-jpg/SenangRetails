@@ -1,0 +1,107 @@
+- generic [active] [ref=e1]:
+  - button "Toggle menu" [ref=e2] [cursor=pointer]
+  - complementary [ref=e4]:
+    - img "Senang by EBI" [ref=e6]
+    - navigation [ref=e7]:
+      - link " Home" [ref=e8] [cursor=pointer]:
+        - /url: /home
+        - generic [ref=e9]: 
+        - generic [ref=e10]: Home
+      - link " Dashboard" [ref=e11] [cursor=pointer]:
+        - /url: /dashboard
+        - generic [ref=e12]: 
+        - generic [ref=e13]: Dashboard
+      - link " Billing & Checkout" [ref=e14] [cursor=pointer]:
+        - /url: /orders
+        - generic [ref=e15]: 
+        - generic [ref=e16]: Billing & Checkout
+      - link " Menu" [ref=e17] [cursor=pointer]:
+        - /url: /menu
+        - generic [ref=e18]: 
+        - generic [ref=e19]: Menu
+      - link " E-Invoice" [ref=e20] [cursor=pointer]:
+        - /url: /EInvoices
+        - generic [ref=e21]: 
+        - generic [ref=e22]: E-Invoice
+      - link " Customers" [ref=e23] [cursor=pointer]:
+        - /url: /members
+        - generic [ref=e24]: 
+        - generic [ref=e25]: Customers
+      - link " Inventory" [ref=e26] [cursor=pointer]:
+        - /url: /inventory
+        - generic [ref=e27]: 
+        - generic [ref=e28]: Inventory
+      - link " Reporting" [ref=e29] [cursor=pointer]:
+        - /url: /report
+        - generic [ref=e30]: 
+        - generic [ref=e31]: Reporting
+      - link " Settings" [ref=e32] [cursor=pointer]:
+        - /url: /setting
+        - generic [ref=e33]: 
+        - generic [ref=e34]: Settings
+      - link " User Control" [ref=e35] [cursor=pointer]:
+        - /url: /usercontrol
+        - generic [ref=e36]: 
+        - generic [ref=e37]: User Control
+    - button " Logout" [ref=e39] [cursor=pointer]:
+      - generic [ref=e40]: 
+      - generic [ref=e41]: Logout
+  - generic [ref=e43]:
+    - banner [ref=e44]:
+      - generic [ref=e45]:
+        - button "Back" [ref=e46] [cursor=pointer]:
+          - generic [ref=e47]: 
+        - text: 
+      - generic [ref=e48]:
+        - heading "Goods Issue Note" [level=1] [ref=e49]
+        - generic [ref=e50]: Stock issue
+      - button "Refresh" [ref=e52] [cursor=pointer]:
+        - generic [ref=e53]: 
+    - main [ref=e54]:
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - heading "Goods Issue Notes" [level=2] [ref=e57]
+          - paragraph [ref=e58]: Issue stock for internal use and adjustments.
+        - button "+ New GIN" [ref=e59] [cursor=pointer]:
+          - generic [ref=e60]: +
+          - generic [ref=e61]: New GIN
+      - region "GIN summary" [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e64]: Documents
+          - strong [ref=e65]: "1"
+        - generic [ref=e66]:
+          - generic [ref=e67]: Issued quantity
+          - strong [ref=e68]: "1"
+        - generic [ref=e69]:
+          - generic [ref=e70]: Stock value
+          - strong [ref=e71]: RM 0.00
+      - region "Document filters" [ref=e72]:
+        - generic [ref=e73]:
+          - generic [ref=e74]: 
+          - searchbox "Search goods issue notes" [ref=e75]
+        - generic [ref=e76]:
+          - generic [ref=e77]: Status
+          - combobox "Status" [ref=e78]:
+            - option "All" [selected]
+            - option "Draft"
+            - option "Posted"
+            - option "Void"
+        - generic [ref=e79]:
+          - generic [ref=e80]: From
+          - textbox "From date" [ref=e81]: 2026-08-17
+      - region "Goods issue notes" [ref=e82]:
+        - generic [ref=e83]:
+          - generic [ref=e84]: GIN number
+          - generic [ref=e85]: Date
+          - generic [ref=e86]: Activity
+          - generic [ref=e87]: Items
+          - generic [ref=e88]: Value
+          - generic [ref=e89]: Status
+        - button "HQ0000000013369 17 Sept 2026 Internal Use 1 RM 0.00 Posted " [ref=e90] [cursor=pointer]:
+          - strong [ref=e92]: HQ0000000013369
+          - generic [ref=e93]: 17 Sept 2026
+          - generic [ref=e94]: Internal Use
+          - generic [ref=e95]: "1"
+          - generic [ref=e96]: RM 0.00
+          - generic [ref=e97]: Posted
+          - generic [ref=e99]: 

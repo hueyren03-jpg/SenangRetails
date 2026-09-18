@@ -1,0 +1,671 @@
+@page "/goods-issue-note"
+@inherits SenangRetails.Shared.Pages.BasePage
+@using EBI.DM
+@using SenangRetails.Shared.Services
+@using SenangRetails.Shared.Services.InventoryService
+@inject IInventoryService InventoryService
+@inject AppState AppState
+@inject NavigationManager Navigation
+
+<div class="gin-page @(isEditorOpen ? "gin-page--editor-open" : string.Empty)">
+    @if (!isEditorOpen)
+    {
+        <main class="gin-list-view">
+            <header class="gin-header">
+                <div class="gin-header__left">
+                    <button type="button" class="gin-menu-button" @onclick="ToggleNav" title="Inventory menu" aria-label="Inventory menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <button type="button" class="gin-back-button" @onclick="HandleBack">
+                        <i class="fa-solid fa-chevron-left"></i>
+                        <span>Back</span>
+                    </button>
+                </div>
+                <div class="gin-header__title">Goods Issue Note</div>
+                <div class="gin-header__right">
+                    <button type="button" class="gin-new-button" @onclick="OpenNewDocument">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>New GIN</span>
+                    </button>
+                </div>
+            </header>
+
+            <section class="gin-summary" aria-label="GIN summary">
+                <div class="gin-summary__card">
+                    <span>Total notes</span>
+                    <strong>@FilteredDocuments.Count()</strong>
+                </div>
+                <div class="gin-summary__card">
+                    <span>Total quantity</span>
+                    <strong>@FilteredDocuments.Sum(item => item.TotalQuantity).ToString("N0") Units</strong>
+                </div>
+                <div class="gin-summary__card">
+                    <span>Total value</span>
+                    <strong>RM @FilteredDocuments.Sum(item => item.TotalValue).ToString("N2")</strong>
+                </div>
+            </section>
+
+            <section class="gin-toolbar" aria-label="Document filters">
+                <label class="gin-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="search"
+                           placeholder="Search goods issue notes..."
+                           aria-label="Search goods issue notes"
+                           @bind="searchText"
+                           @bind:event="oninput" />
+                    @if (!string.IsNullOrWhiteSpace(searchText))
+                    {
+                        <button type="button" @onclick="ClearSearch" title="Clear search" aria-label="Clear search">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    }
+                </label>
+
+                <label class="gin-filter">
+                    <i class="fa-solid fa-filter"></i>
+                    <select @bind="statusFilter" aria-label="Status">
+                        <option value="All">All status</option>
+                        <option value="Draft">Draft</option>
+                        <option value="Posted">Posted</option>
+                        <option value="Void">Void</option>
+                    </select>
+                </label>
+
+                <label class="gin-filter gin-filter--date">
+                    <i class="fa-regular fa-calendar"></i>
+                    <input type="date" @bind="filterFrom" aria-label="From date" />
+                </label>
+
+                <label class="gin-filter gin-filter--date">
+                    <i class="fa-solid fa-arrow-right"></i>
+                    <input type="date" @bind="filterTo" aria-label="To date" />
+                </label>
+
+                <button type="button" class="gin-refresh-button" @onclick="RefreshList" title="Refresh" aria-label="Refresh">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+            </section>
+
+            <section class="gin-document-table" aria-label="Goods issue notes">
+                <div class="gin-document-table__head">
+                    <span>GIN number</span>
+                    <span>Activity</span>
+                    <span class="gin-align-right">Total</span>
+                </div>
+
+                @if (!FilteredDocuments.Any())
+                {
+                    <div class="gin-empty-state">
+                        <i class="fa-regular fa-file-lines"></i>
+                        <span>No goods issue notes found</span>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var document in FilteredDocuments)
+                    {
+                        <button type="button" class="gin-document-row" @onclick="() => OpenDocument(document)">
+                            <span class="gin-document-cell">
+                                <strong>@document.DocumentNumber</strong>
+                                <small>@document.FinancialDate.ToString("dd/MM/yyyy")</small>
+                            </span>
+                            <span class="gin-document-cell">
+                                <strong>@document.Activity</strong>
+                                <small>@(string.IsNullOrWhiteSpace(document.ReferenceNumber) ? "No reference" : document.ReferenceNumber)</small>
+                            </span>
+                            <span class="gin-document-cell gin-document-cell--total">
+                                <strong>RM @document.TotalValue.ToString("N2")</strong>
+                                <small>@document.ItemCount item(s) · @document.Status</small>
+                            </span>
+                        </button>
+                    }
+                }
+            </section>
+        </main>
+    }
+    else
+    {
+        <main class="gin-editor" role="dialog" aria-modal="true" aria-label="Goods issue note editor">
+            <header class="gin-header gin-editor-header">
+                <div class="gin-header__left">
+                    <button type="button" class="gin-close-button" @onclick="CloseEditor" title="Close" aria-label="Close">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="gin-header__title">@(isEditingExisting ? "Edit Goods Issue Note" : "Create Goods Issue Note")</div>
+                <div class="gin-header__right">
+                    <span class="gin-editor-status gin-editor-status--@draft.Status.ToString().ToLowerInvariant()">@draft.Status</span>
+                </div>
+            </header>
+
+            <div class="gin-editor-scroll">
+                @if (!string.IsNullOrWhiteSpace(messageText))
+                {
+                    <div class="gin-message gin-message--@messageType" role="status">
+                        <i class="fa-solid @(messageType == "error" ? "fa-circle-exclamation" : "fa-circle-check")"></i>
+                        <span>@messageText</span>
+                        <button type="button" @onclick="DismissMessage" title="Dismiss" aria-label="Dismiss message"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                }
+
+                <section class="gin-form-card" aria-label="Document details">
+                    <label class="gin-form-row gin-form-row--readonly">
+                        <span class="gin-form-row__label"><i class="fa-solid fa-store"></i> Branch</span>
+                        <span class="gin-form-row__control">@draft.BranchId</span>
+                    </label>
+
+                    <div class="gin-form-row gin-dropdown-row">
+                        <span class="gin-form-row__label"><i class="fa-solid fa-list-check"></i> Activity</span>
+                        <div class="gin-form-row__control">
+                            <button type="button"
+                                    class="gin-field-select"
+                                    aria-label="Activity"
+                                    aria-haspopup="listbox"
+                                    aria-expanded="@activityMenuOpen"
+                                    @onclick="ToggleActivityMenu">
+                                <span>@draft.Activity</span>
+                                <i class="fa-solid fa-chevron-down @(activityMenuOpen ? "gin-chevron-open" : string.Empty)"></i>
+                            </button>
+
+                            @if (activityMenuOpen)
+                            {
+                                <button type="button"
+                                        class="gin-dropdown-backdrop"
+                                        aria-label="Close activity selection"
+                                        @onclick="CloseActivityMenu"></button>
+                                <div class="gin-field-menu" role="listbox" aria-label="Activity options">
+                            @foreach (var activity in activityOptions)
+                            {
+                                        <button type="button"
+                                                class="gin-field-menu__option @(draft.Activity == activity ? "active" : string.Empty)"
+                                                role="option"
+                                                aria-selected="@(draft.Activity == activity)"
+                                                @onclick="() => SelectActivity(activity)">
+                                            <span>@activity</span>
+                                            @if (draft.Activity == activity)
+                                            {
+                                                <i class="fa-solid fa-check"></i>
+                                            }
+                                        </button>
+                            }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <label class="gin-form-row">
+                        <span class="gin-form-row__label"><i class="fa-regular fa-calendar"></i> Financial date</span>
+                        <span class="gin-form-row__control"><input type="date" @bind="draft.FinancialDate" aria-label="Financial date" /></span>
+                    </label>
+
+                    <label class="gin-form-row">
+                        <span class="gin-form-row__label"><i class="fa-regular fa-calendar-check"></i> Posting date</span>
+                        <span class="gin-form-row__control"><input type="date" @bind="draft.PostingDate" aria-label="Posting date" /></span>
+                    </label>
+
+                    <label class="gin-form-row">
+                        <span class="gin-form-row__label"><i class="fa-regular fa-file-lines"></i> Reference</span>
+                        <span class="gin-form-row__control"><input type="text" placeholder="Optional" @bind="draft.ReferenceNumber" aria-label="Reference" /></span>
+                    </label>
+
+                    <label class="gin-form-row">
+                        <span class="gin-form-row__label"><i class="fa-regular fa-user"></i> Issue to</span>
+                        <span class="gin-form-row__control"><input type="text" placeholder="Department or staff" @bind="draft.AccountName" aria-label="Issue to" /></span>
+                    </label>
+
+                    <label class="gin-form-row gin-form-row--remarks">
+                        <span class="gin-form-row__label"><i class="fa-regular fa-note-sticky"></i> Remarks</span>
+                        <span class="gin-form-row__control"><textarea rows="2" placeholder="Optional note" @bind="draft.Remarks" aria-label="Remarks"></textarea></span>
+                    </label>
+                </section>
+
+                <button type="button" class="gin-add-product-card" @onclick="OpenItemPicker">
+                    <span><i class="fa-solid fa-box"></i> Add Product</span>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+
+                @if (draft.Lines.Any())
+                {
+                    <section class="gin-lines-table" aria-label="Issued products">
+                        <div class="gin-lines-table__head">
+                            <span>Product</span>
+                            <span class="gin-align-center">UOM</span>
+                            <span class="gin-align-center">Quantity</span>
+                            <span class="gin-align-right">Cost</span>
+                            <span class="gin-align-right">Total</span>
+                            <span class="gin-align-center">Action</span>
+                        </div>
+
+                        @foreach (var line in draft.Lines)
+                        {
+                            <div class="gin-line-row">
+                                <div class="gin-line-row__item">
+                                    <strong>@line.ItemName</strong>
+                                    <small>@line.ItemCode</small>
+                                </div>
+                                <div class="gin-line-row__uom gin-align-center" data-label="UOM">@line.Uom</div>
+                                <div class="gin-quantity" data-label="Quantity">
+                                    <button type="button" @onclick="() => ChangeQuantity(line, -1)" title="Decrease quantity" aria-label="Decrease quantity"><i class="fa-solid fa-minus"></i></button>
+                                    <input type="number" min="0.01" step="1" @bind="line.Quantity" aria-label="Issue quantity for @line.ItemName" />
+                                    <button type="button" @onclick="() => ChangeQuantity(line, 1)" title="Increase quantity" aria-label="Increase quantity"><i class="fa-solid fa-plus"></i></button>
+                                </div>
+                                <label class="gin-cost-input" data-label="Cost">
+                                    <span>RM</span>
+                                    <input type="number" min="0" step="0.01" @bind="line.Cost" aria-label="Unit cost for @line.ItemName" />
+                                </label>
+                                <div class="gin-line-row__value gin-align-right" data-label="Total">RM @line.Total.ToString("N2")</div>
+                                <div class="gin-align-center">
+                                    <button type="button" class="gin-remove-line" @onclick="() => RemoveLine(line)" title="Remove item" aria-label="Remove @line.ItemName">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </section>
+                }
+                else
+                {
+                    <div class="gin-empty-products">
+                        <i class="fa-solid fa-box-open"></i>
+                        <span>No products added</span>
+                    </div>
+                }
+
+                <section class="gin-document-total" aria-label="Document totals">
+                    <span>@draft.Lines.Count item(s)</span>
+                    <span>@draft.Lines.Sum(line => line.Quantity).ToString("N2") units</span>
+                    <strong>RM @draft.TotalValue.ToString("N2")</strong>
+                </section>
+            </div>
+
+            <footer class="gin-bottom-action-bar">
+                <button type="button" class="gin-secondary-button" @onclick="SaveDraft" disabled="@isSaving">
+                    <i class="fa-regular fa-floppy-disk"></i>
+                    Save Draft
+                </button>
+                <button type="button" class="gin-primary-button" @onclick="PostDocument" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    }
+                    else
+                    {
+                        <i class="fa-solid fa-check"></i>
+                    }
+                    Post Issue
+                </button>
+            </footer>
+        </main>
+    }
+
+    <InventoryAddProductModal IsOpen="@showItemPicker"
+                              Title="Add Product"
+                              OnClose="CloseItemPicker"
+                              OnProductSelected="HandleProductSelected" />
+</div>
+
+@code {
+    [Parameter] public EventCallback OnToggleNav { get; set; }
+
+    private readonly string[] activityOptions =
+    [
+        "Internal Use",
+        "Broken",
+        "Expired",
+        "Missing",
+        "Sample / Tester",
+        "Gift / Present",
+        "Stock Adjustment"
+    ];
+
+    private readonly List<GinDocumentSummary> documents =
+    [
+        new()
+        {
+            DocumentId = "HQ0000000013369",
+            DocumentNumber = "HQ0000000013369",
+            BranchId = "AM",
+            FinancialDate = new DateTime(2026, 9, 17),
+            Activity = "Internal Use",
+            ReferenceNumber = "",
+            ItemCount = 1,
+            TotalQuantity = 1,
+            TotalValue = 0,
+            Status = "Posted"
+        }
+    ];
+
+    private List<InventoryDM> availableItems = [];
+    private GinDraft draft = new();
+    private bool isEditorOpen;
+    private bool isEditingExisting;
+    private bool showItemPicker;
+    private bool activityMenuOpen;
+    private bool isSaving;
+    private string searchText = string.Empty;
+    private string statusFilter = "All";
+    private DateTime filterFrom = DateTime.Today.AddMonths(-1);
+    private DateTime filterTo = DateTime.Today;
+    private string messageText = string.Empty;
+    private string messageType = "success";
+
+    private IEnumerable<GinDocumentSummary> FilteredDocuments => documents
+        .Where(item => item.FinancialDate.Date >= filterFrom.Date && item.FinancialDate.Date <= filterTo.Date)
+        .Where(item => statusFilter == "All" || item.Status.Equals(statusFilter, StringComparison.OrdinalIgnoreCase))
+        .Where(item => string.IsNullOrWhiteSpace(searchText)
+            || item.DocumentNumber.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+            || item.ReferenceNumber.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+            || item.Activity.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(item => item.FinancialDate);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID;
+        draft = NewDraft(branchId);
+        await LoadItemsAsync();
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        try
+        {
+            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID;
+            availableItems = await InventoryService.LoadItemsAsync(branchId) ?? [];
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GoodsIssueNote] Unable to load items: {ex.Message}");
+            availableItems = [];
+        }
+    }
+
+    private GinDraft NewDraft(string branchId) => new()
+    {
+        BranchId = branchId,
+        Activity = "Internal Use",
+        FinancialDate = DateTime.Today,
+        PostingDate = DateTime.Today,
+        Status = GinStatus.Draft
+    };
+
+    private void OpenNewDocument()
+    {
+        var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID;
+        draft = NewDraft(branchId);
+        isEditingExisting = false;
+        isEditorOpen = true;
+        activityMenuOpen = false;
+        DismissMessage();
+    }
+
+    private void OpenDocument(GinDocumentSummary document)
+    {
+        draft = new GinDraft
+        {
+            DocumentId = document.DocumentId,
+            DocumentNumber = document.DocumentNumber,
+            BranchId = document.BranchId,
+            Activity = document.Activity,
+            FinancialDate = document.FinancialDate,
+            PostingDate = document.FinancialDate,
+            ReferenceNumber = document.ReferenceNumber,
+            Status = Enum.TryParse<GinStatus>(document.Status, true, out var status) ? status : GinStatus.Draft,
+            Lines =
+            [
+                new GinLine
+                {
+                    ItemId = "HQ0000000045263",
+                    ItemCode = "Z28",
+                    ItemName = "Abalone Slice",
+                    Uom = "UNIT",
+                    Quantity = 1,
+                    Cost = 0
+                }
+            ]
+        };
+        isEditingExisting = true;
+        isEditorOpen = true;
+        activityMenuOpen = false;
+        DismissMessage();
+    }
+
+    private void CloseEditor()
+    {
+        isEditorOpen = false;
+        showItemPicker = false;
+        activityMenuOpen = false;
+        DismissMessage();
+    }
+
+    private void HandleBack()
+    {
+        if (showItemPicker)
+        {
+            CloseItemPicker();
+            return;
+        }
+
+        if (isEditorOpen)
+        {
+            CloseEditor();
+            return;
+        }
+
+        Navigation.NavigateTo("/home");
+    }
+
+    private async Task ToggleNav() => await OnToggleNav.InvokeAsync();
+
+    private void ToggleActivityMenu() => activityMenuOpen = !activityMenuOpen;
+
+    private void CloseActivityMenu() => activityMenuOpen = false;
+
+    private void SelectActivity(string activity)
+    {
+        draft.Activity = activity;
+        activityMenuOpen = false;
+    }
+
+    private void OpenItemPicker()
+    {
+        activityMenuOpen = false;
+        showItemPicker = true;
+    }
+
+    private void CloseItemPicker() => showItemPicker = false;
+
+    private async Task HandleProductSelected(string masterAccountId)
+    {
+        var item = availableItems.FirstOrDefault(candidate => candidate.MasterAccountID == masterAccountId);
+        if (item == null)
+        {
+            await LoadItemsAsync();
+            item = availableItems.FirstOrDefault(candidate => candidate.MasterAccountID == masterAccountId);
+        }
+
+        if (item == null)
+        {
+            CloseItemPicker();
+            ShowError("Unable to load the selected product details.");
+            return;
+        }
+
+        AddItem(item);
+    }
+
+    private void AddItem(InventoryDM item)
+    {
+        var itemId = item.MasterAccountID ?? string.Empty;
+        var existing = draft.Lines.FirstOrDefault(line => line.ItemId == itemId);
+        if (existing != null)
+        {
+            existing.Quantity += 1;
+        }
+        else
+        {
+            draft.Lines.Add(new GinLine
+            {
+                ItemId = itemId,
+                ItemCode = string.IsNullOrWhiteSpace(item.ProductCode) ? itemId : item.ProductCode,
+                ItemName = item.AccountName ?? "Unnamed item",
+                Uom = item.UnitOfMeasureName ?? item.UnitOfMeasureID ?? "UNIT",
+                Quantity = 1,
+                Cost = item.PurchasePrice
+            });
+        }
+
+        CloseItemPicker();
+    }
+
+    private void RemoveLine(GinLine line) => draft.Lines.Remove(line);
+
+    private void ChangeQuantity(GinLine line, int delta)
+    {
+        line.Quantity = Math.Max(0.01m, line.Quantity + delta);
+    }
+
+    private async Task SaveDraft()
+    {
+        if (!ValidateDraft())
+        {
+            return;
+        }
+
+        isSaving = true;
+        await Task.Delay(250);
+        draft.Status = GinStatus.Draft;
+        UpsertDocumentSummary("Draft");
+        isSaving = false;
+        messageType = "success";
+        messageText = "Draft is ready. API persistence will use this document structure.";
+    }
+
+    private async Task PostDocument()
+    {
+        if (!ValidateDraft())
+        {
+            return;
+        }
+
+        isSaving = true;
+        await Task.Delay(300);
+        draft.Status = GinStatus.Posted;
+        UpsertDocumentSummary("Posted");
+        isSaving = false;
+        messageType = "success";
+        messageText = "GIN is ready to post. API persistence will be connected to this action.";
+    }
+
+    private bool ValidateDraft()
+    {
+        if (string.IsNullOrWhiteSpace(draft.BranchId))
+        {
+            ShowError("Select a branch before saving.");
+            return false;
+        }
+
+        if (!draft.Lines.Any())
+        {
+            ShowError("Add at least one item.");
+            return false;
+        }
+
+        if (draft.Lines.Any(line => line.Quantity <= 0))
+        {
+            ShowError("Issue quantity must be greater than zero.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void UpsertDocumentSummary(string status)
+    {
+        if (string.IsNullOrWhiteSpace(draft.DocumentId))
+        {
+            draft.DocumentId = $"LOCAL-{DateTime.Now:yyyyMMddHHmmss}";
+            draft.DocumentNumber = "Auto-generated";
+        }
+
+        var summary = documents.FirstOrDefault(item => item.DocumentId == draft.DocumentId);
+        if (summary == null)
+        {
+            summary = new GinDocumentSummary { DocumentId = draft.DocumentId };
+            documents.Add(summary);
+        }
+
+        summary.DocumentNumber = draft.DocumentNumber;
+        summary.BranchId = draft.BranchId;
+        summary.FinancialDate = draft.FinancialDate;
+        summary.Activity = draft.Activity;
+        summary.ReferenceNumber = draft.ReferenceNumber;
+        summary.ItemCount = draft.Lines.Count;
+        summary.TotalQuantity = draft.Lines.Sum(line => line.Quantity);
+        summary.TotalValue = draft.TotalValue;
+        summary.Status = status;
+        isEditingExisting = true;
+    }
+
+    private void ShowError(string text)
+    {
+        messageType = "error";
+        messageText = text;
+    }
+
+    private void DismissMessage()
+    {
+        messageText = string.Empty;
+        messageType = "success";
+    }
+
+    private void ClearSearch() => searchText = string.Empty;
+    private void RefreshList() => StateHasChanged();
+
+    private sealed class GinDraft
+    {
+        public string DocumentId { get; set; } = string.Empty;
+        public string DocumentNumber { get; set; } = string.Empty;
+        public string BranchId { get; set; } = string.Empty;
+        public DateTime FinancialDate { get; set; }
+        public DateTime PostingDate { get; set; }
+        public string Activity { get; set; } = "Internal Use";
+        public string ReferenceNumber { get; set; } = string.Empty;
+        public string AccountName { get; set; } = string.Empty;
+        public string Remarks { get; set; } = string.Empty;
+        public GinStatus Status { get; set; }
+        public List<GinLine> Lines { get; set; } = [];
+        public decimal TotalValue => Lines.Sum(line => line.Total);
+    }
+
+    private sealed class GinLine
+    {
+        public string ItemId { get; set; } = string.Empty;
+        public string ItemCode { get; set; } = string.Empty;
+        public string ItemName { get; set; } = string.Empty;
+        public string Uom { get; set; } = "UNIT";
+        public decimal Quantity { get; set; } = 1;
+        public decimal Cost { get; set; }
+        public decimal Total => Quantity * Cost;
+    }
+
+    private sealed class GinDocumentSummary
+    {
+        public string DocumentId { get; set; } = string.Empty;
+        public string DocumentNumber { get; set; } = string.Empty;
+        public string BranchId { get; set; } = string.Empty;
+        public DateTime FinancialDate { get; set; }
+        public string Activity { get; set; } = string.Empty;
+        public string ReferenceNumber { get; set; } = string.Empty;
+        public int ItemCount { get; set; }
+        public decimal TotalQuantity { get; set; }
+        public decimal TotalValue { get; set; }
+        public string Status { get; set; } = "Draft";
+    }
+
+    private enum GinStatus
+    {
+        Draft,
+        Posted,
+        Void
+    }
+}

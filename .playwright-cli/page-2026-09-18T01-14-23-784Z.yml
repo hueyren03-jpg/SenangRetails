@@ -1,0 +1,146 @@
+- generic [ref=e131]:
+  - generic [ref=e132]:
+    - generic [ref=e133]:
+      - button " Back" [ref=e135] [cursor=pointer]:
+        - generic [ref=e136]: 
+        - generic [ref=e137]: Back
+      - button "" [ref=e138] [cursor=pointer]
+    - generic [ref=e140]: Inventory
+    - generic [ref=e141]:
+      - textbox "Search menu..." [ref=e142]
+      - generic [ref=e143]: 
+    - generic [ref=e145]:
+      - generic [ref=e146]:
+        - generic [ref=e147] [cursor=pointer]:
+          - generic [ref=e148]: Overview
+          - generic [ref=e149]: 
+        - button " Stock Summary" [ref=e150] [cursor=pointer]:
+          - generic [ref=e151]: 
+          - generic [ref=e153]: Stock Summary
+        - button " Stock Balance" [ref=e154] [cursor=pointer]:
+          - generic [ref=e155]: 
+          - generic [ref=e157]: Stock Balance
+        - button " Stock Movement" [ref=e158] [cursor=pointer]:
+          - generic [ref=e159]: 
+          - generic [ref=e161]: Stock Movement
+        - button " Stock Transaction" [ref=e162] [cursor=pointer]:
+          - generic [ref=e163]: 
+          - generic [ref=e165]: Stock Transaction
+      - generic [ref=e166]:
+        - generic [ref=e167] [cursor=pointer]:
+          - generic [ref=e168]: Stock Operations
+          - generic [ref=e169]: 
+        - button " Stock In" [ref=e170] [cursor=pointer]:
+          - generic [ref=e171]: 
+          - generic [ref=e173]: Stock In
+        - button " Stock Out" [ref=e174] [cursor=pointer]:
+          - generic [ref=e175]: 
+          - generic [ref=e177]: Stock Out
+        - button " Goods Issue Note" [ref=e178] [cursor=pointer]:
+          - generic [ref=e179]: 
+          - generic [ref=e181]: Goods Issue Note
+        - button " Purchase Order" [ref=e182] [cursor=pointer]:
+          - generic [ref=e183]: 
+          - generic [ref=e185]: Purchase Order
+        - button " Receive Note" [ref=e186] [cursor=pointer]:
+          - generic [ref=e187]: 
+          - generic [ref=e189]: Receive Note
+        - button " Stock Transfer" [ref=e190] [cursor=pointer]:
+          - generic [ref=e191]: 
+          - generic [ref=e193]: Stock Transfer
+  - generic [ref=e195]:
+    - banner [ref=e196]:
+      - generic [ref=e197]:
+        - button "Back" [ref=e198] [cursor=pointer]:
+          - generic [ref=e199]: 
+        - button "Inventory menu" [ref=e200] [cursor=pointer]:
+          - generic [ref=e201]: 
+      - generic [ref=e202]:
+        - heading "Goods Issue Note" [level=1] [ref=e203]
+        - generic [ref=e238]: HQ0000000013369
+      - generic [ref=e205]: Posted
+    - main [ref=e241]:
+      - generic [ref=e242]:
+        - generic [ref=e243]:
+          - button " Documents" [ref=e244] [cursor=pointer]:
+            - generic [ref=e245]: 
+            - text: Documents
+          - heading "Edit Goods Issue Note" [level=2] [ref=e247]
+        - text:  
+      - generic [ref=e248]:
+        - generic [ref=e249]:
+          - heading "Document details" [level=3] [ref=e250]
+          - generic [ref=e251]: HQ0000000013369
+        - generic [ref=e252]:
+          - generic [ref=e253]:
+            - generic [ref=e254]: Branch *
+            - generic [ref=e255]:
+              - generic [ref=e256]: 
+              - generic [ref=e257]: AM
+          - generic [ref=e258]:
+            - generic [ref=e259]: Activity *
+            - combobox "Activity *" [ref=e260]:
+              - option "Internal Use" [selected]
+              - option "Broken"
+              - option "Expired"
+              - option "Missing"
+              - option "Sample / Tester"
+              - option "Gift / Present"
+              - option "Stock Adjustment"
+          - generic [ref=e261]:
+            - generic [ref=e262]: Financial date *
+            - textbox "Financial date *" [ref=e263]: 2026-09-17
+          - generic [ref=e264]:
+            - generic [ref=e265]: Posting date *
+            - textbox "Posting date *" [ref=e266]: 2026-09-17
+          - generic [ref=e267]:
+            - generic [ref=e268]: Reference
+            - textbox "Reference" [ref=e269]:
+              - /placeholder: Optional reference
+          - generic [ref=e270]:
+            - generic [ref=e271]: Issue to / cost centre
+            - textbox "Issue to / cost centre" [ref=e272]:
+              - /placeholder: Department or staff
+          - generic [ref=e273]:
+            - generic [ref=e274]: Remarks
+            - textbox "Remarks" [ref=e275]:
+              - /placeholder: Reason or handling note
+      - generic [ref=e276]:
+        - generic [ref=e277]:
+          - generic [ref=e278]:
+            - heading "Items" [level=3] [ref=e279]
+            - generic [ref=e280]: 1 line(s)
+          - button "+ Add item" [ref=e281] [cursor=pointer]:
+            - generic [ref=e282]: +
+            - text: Add item
+        - generic [ref=e284]:
+          - generic [ref=e285]:
+            - generic [ref=e286]: 
+            - generic [ref=e288]:
+              - strong [ref=e289]: Abalone Slice
+              - generic [ref=e290]: Z28
+          - generic [ref=e291]: UOM UNIT
+          - generic [ref=e292]:
+            - text: Issue quantity
+            - button "Decrease quantity" [ref=e293] [cursor=pointer]:
+              - generic [ref=e294]: 
+            - spinbutton "Issue quantity for Abalone Slice" [ref=e295]: "1"
+            - button "Increase quantity" [ref=e296] [cursor=pointer]:
+              - generic [ref=e297]: +
+          - generic [ref=e298]:
+            - text: Unit cost
+            - generic [ref=e299]: RM
+            - spinbutton "Unit cost for Abalone Slice" [ref=e300]: "0"
+          - generic [ref=e301]: Value RM 0.00
+          - button "Remove Abalone Slice" [ref=e302] [cursor=pointer]:
+            - generic [ref=e303]: 
+      - region "Document totals" [ref=e304]:
+        - generic [ref=e305]:
+          - generic [ref=e306]: Total quantity
+          - strong [ref=e307]: "1.00"
+        - generic [ref=e308]:
+          - generic [ref=e309]: Stock value
+          - strong [ref=e310]: RM 0.00
+        - button " Post issue" [ref=e311] [cursor=pointer]:
+          - generic [ref=e312]: 
+          - text: Post issue

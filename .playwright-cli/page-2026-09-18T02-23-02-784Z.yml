@@ -1,0 +1,129 @@
+- generic [ref=e122]:
+  - generic [ref=e123]:
+    - generic [ref=e124]:
+      - button " Back" [ref=e126] [cursor=pointer]:
+        - generic [ref=e127]: 
+        - generic [ref=e128]: Back
+      - button "" [ref=e129] [cursor=pointer]
+    - generic [ref=e131]: Inventory
+    - generic [ref=e132]:
+      - textbox "Search menu..." [ref=e133]
+      - generic [ref=e134]: 
+    - generic [ref=e136]:
+      - generic [ref=e137]:
+        - generic [ref=e138] [cursor=pointer]:
+          - generic [ref=e139]: Overview
+          - generic [ref=e140]: 
+        - button " Stock Summary" [ref=e141] [cursor=pointer]:
+          - generic [ref=e142]: 
+          - generic [ref=e144]: Stock Summary
+        - button " Stock Balance" [ref=e145] [cursor=pointer]:
+          - generic [ref=e146]: 
+          - generic [ref=e148]: Stock Balance
+        - button " Stock Movement" [ref=e149] [cursor=pointer]:
+          - generic [ref=e150]: 
+          - generic [ref=e152]: Stock Movement
+        - button " Stock Transaction" [ref=e153] [cursor=pointer]:
+          - generic [ref=e154]: 
+          - generic [ref=e156]: Stock Transaction
+      - generic [ref=e157]:
+        - generic [ref=e158] [cursor=pointer]:
+          - generic [ref=e159]: Stock Operations
+          - generic [ref=e160]: 
+        - button " Stock In" [ref=e161] [cursor=pointer]:
+          - generic [ref=e162]: 
+          - generic [ref=e164]: Stock In
+        - button " Stock Out" [ref=e165] [cursor=pointer]:
+          - generic [ref=e166]: 
+          - generic [ref=e168]: Stock Out
+        - button " Goods Issue Note" [ref=e169] [cursor=pointer]:
+          - generic [ref=e170]: 
+          - generic [ref=e172]: Goods Issue Note
+        - button " Purchase Order" [ref=e173] [cursor=pointer]:
+          - generic [ref=e174]: 
+          - generic [ref=e176]: Purchase Order
+        - button " Receive Note" [ref=e177] [cursor=pointer]:
+          - generic [ref=e178]: 
+          - generic [ref=e180]: Receive Note
+        - button " Stock Transfer" [ref=e181] [cursor=pointer]:
+          - generic [ref=e182]: 
+          - generic [ref=e184]: Stock Transfer
+  - dialog "Goods issue note editor" [ref=e186]:
+    - banner [ref=e187]:
+      - button "Close" [ref=e189] [cursor=pointer]:
+        - generic [ref=e190]: 
+      - generic [ref=e191]: Create Goods Issue Note
+      - generic [ref=e192]: Draft
+    - generic [ref=e194]:
+      - region "Document details" [ref=e195]:
+        - generic [ref=e196]:
+          - generic [ref=e197]:
+            - generic [ref=e198]: 
+            - text: Branch
+          - generic [ref=e199]: HQ
+        - generic [ref=e200]:
+          - generic [ref=e201]:
+            - generic [ref=e202]: 
+            - text: Activity
+          - generic [ref=e203]:
+            - button "Activity" [active] [ref=e204] [cursor=pointer]:
+              - generic [ref=e205]: Internal Use
+              - generic: 
+            - button "Close activity selection" [ref=e247] [cursor=pointer]
+            - listbox "Activity options" [ref=e248]:
+              - option "Internal Use " [ref=e249] [cursor=pointer]:
+                - generic [ref=e250]: Internal Use
+                - generic [ref=e251]: 
+              - option "Broken" [ref=e252] [cursor=pointer]
+              - option "Expired" [ref=e254] [cursor=pointer]
+              - option "Missing" [ref=e256] [cursor=pointer]
+              - option "Sample / Tester" [ref=e258] [cursor=pointer]
+              - option "Gift / Present" [ref=e260] [cursor=pointer]
+              - option "Stock Adjustment" [ref=e262] [cursor=pointer]
+        - generic [ref=e206]:
+          - generic [ref=e207]:
+            - generic [ref=e208]: 
+            - text: Financial date
+          - textbox "Financial date" [ref=e210]: 2026-09-18
+        - generic [ref=e211]:
+          - generic [ref=e212]:
+            - generic [ref=e213]: 
+            - text: Posting date
+          - textbox "Posting date" [ref=e215]: 2026-09-18
+        - generic [ref=e216]:
+          - generic [ref=e217]:
+            - generic [ref=e218]: 
+            - text: Reference
+          - textbox "Reference" [ref=e220]:
+            - /placeholder: Optional
+        - generic [ref=e221]:
+          - generic [ref=e222]:
+            - generic [ref=e223]: 
+            - text: Issue to
+          - textbox "Issue to" [ref=e225]:
+            - /placeholder: Department or staff
+        - generic [ref=e226]:
+          - generic [ref=e227]:
+            - generic [ref=e228]: 
+            - text: Remarks
+          - textbox "Remarks" [ref=e230]:
+            - /placeholder: Optional note
+      - button " Add Product " [ref=e231] [cursor=pointer]:
+        - generic [ref=e232]:
+          - generic [ref=e233]: 
+          - text: Add Product
+        - generic [ref=e234]: 
+      - generic [ref=e235]:
+        - generic [ref=e236]: 
+        - generic [ref=e237]: No products added
+      - region "Document totals" [ref=e238]:
+        - generic [ref=e239]: 0 item(s)
+        - generic [ref=e240]: 0.00 units
+        - strong [ref=e241]: RM 0.00
+    - contentinfo [ref=e242]:
+      - button " Save Draft" [ref=e243] [cursor=pointer]:
+        - generic [ref=e244]: 
+        - text: Save Draft
+      - button " Post Issue" [ref=e245] [cursor=pointer]:
+        - generic [ref=e246]: 
+        - text: Post Issue

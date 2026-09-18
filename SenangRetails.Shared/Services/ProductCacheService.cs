@@ -27,7 +27,6 @@ namespace SenangRetails.Shared.Services
         private const string DefaultCatalogKey = "default";
         private static readonly TimeSpan BackgroundRefreshInterval = TimeSpan.FromMinutes(2);
         private bool _isRefreshing;
-        private bool _isRefreshingSellingUnits;
         private string _itemsBranchKey = string.Empty;
         private DateTime _lastSuccessfulRefreshAtUtc = DateTime.MinValue;
         private readonly Dictionary<string, InventoryDM> _localPatches = new();
@@ -210,12 +209,6 @@ namespace SenangRetails.Shared.Services
             return null;
         }
 
-        public void TriggerSellingUnitRefresh()
-        {
-            if (_isRefreshingSellingUnits || Items == null) return;
-            _ = RefreshSellingUnitsAsync();
-        }
-
         public void RemoveLocalPatch(string masterAccountId)
         {
             _localPatches.Remove(masterAccountId);
@@ -314,21 +307,6 @@ namespace SenangRetails.Shared.Services
             _localPatches.Clear();
             _itemsBranchKey = string.Empty;
             _lastSuccessfulRefreshAtUtc = DateTime.MinValue;
-        }
-
-        private async Task RefreshSellingUnitsAsync()
-        {
-            if (_isRefreshingSellingUnits || Items == null) return;
-            _isRefreshingSellingUnits = true;
-            try
-            {
-                foreach (var product in Items.Where(item => item.HasUOM && GetSellingUnits(item).Count == 0).ToList())
-                    await GetOrLoadSellingUnitsAsync(product).ConfigureAwait(false);
-            }
-            finally
-            {
-                _isRefreshingSellingUnits = false;
-            }
         }
 
         private static Inventory_SKUDM ToRuntimeSku(InventorySkuEntry row, string productId) => new()

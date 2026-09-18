@@ -264,10 +264,12 @@ namespace SenangRetails.Shared.Pages
 
         private List<PriceGroupModel> availablePriceGroups = new();
         private string selectedPriceGroupCode = "";
+        private string loadedPriceGroupCode = "";
         private decimal _originalSalesPrice = 0;
 
         private List<PromotionSetupModel> availablePromotions = new();
         private string selectedPromoCode = "";
+        private string loadedPromoCode = "";
 
         private static string GetPromotionSelectionValue(PromotionSetupModel promotion) =>
             !string.IsNullOrWhiteSpace(promotion.Code)
@@ -375,6 +377,9 @@ namespace SenangRetails.Shared.Pages
         // Visible At Branch
         private Dictionary<string, string> _branchNames = new();
         private HashSet<string> _visibleAtBranchIds = new();
+        private readonly List<MasterAccountBranchEntry> _loadedBranchEntries = new();
+        private string? _loadedBranchMasterAccountId;
+        private bool _loadedBranchEntriesInitialized;
 
         // Calculator Logic
         private string _calculatorTarget = "Price";
@@ -652,24 +657,42 @@ namespace SenangRetails.Shared.Pages
         private async System.Threading.Tasks.Task<(bool Success, string Message)> SyncProductSetupAssignmentsAsync(
             string productId)
         {
-            var priceGroupSaved = await PriceGroupService.AssignProductToPriceGroupAsync(
-                productId,
-                selectedPriceGroupCode);
-            if (!priceGroupSaved)
-                return (false, "The selected price group could not be synchronized with Price Group Setup.");
+            var priceGroupChanged = !string.Equals(
+                loadedPriceGroupCode,
+                selectedPriceGroupCode,
+                StringComparison.OrdinalIgnoreCase);
+            var promotionChanged = !string.Equals(
+                loadedPromoCode,
+                selectedPromoCode,
+                StringComparison.OrdinalIgnoreCase);
 
-            var promotionSaved = await PromotionSetupService.AssignProductToPromotionAsync(
-                productId,
-                selectedPromoCode);
-            if (!promotionSaved)
+            if (priceGroupChanged)
             {
-                var reason = PromotionSetupService.LastError;
-                return (false, string.IsNullOrWhiteSpace(reason)
-                    ? "The selected promotion could not be synchronized with Promotion Setup."
-                    : $"The selected promotion could not be synchronized with Promotion Setup: {reason}");
+                var priceGroupSaved = await PriceGroupService.AssignProductToPriceGroupAsync(
+                    productId,
+                    selectedPriceGroupCode);
+                if (!priceGroupSaved)
+                    return (false, "The selected price group could not be synchronized with Price Group Setup.");
             }
 
-            await RefreshProductSetupOptionsAsync();
+            if (promotionChanged)
+            {
+                var promotionSaved = await PromotionSetupService.AssignProductToPromotionAsync(
+                    productId,
+                    selectedPromoCode);
+                if (!promotionSaved)
+                {
+                    var reason = PromotionSetupService.LastError;
+                    return (false, string.IsNullOrWhiteSpace(reason)
+                        ? "The selected promotion could not be synchronized with Promotion Setup."
+                        : $"The selected promotion could not be synchronized with Promotion Setup: {reason}");
+                }
+            }
+
+            loadedPriceGroupCode = selectedPriceGroupCode;
+            loadedPromoCode = selectedPromoCode;
+            if (priceGroupChanged || promotionChanged)
+                await RefreshProductSetupOptionsAsync();
             return (true, string.Empty);
         }
 
@@ -1200,6 +1223,7 @@ namespace SenangRetails.Shared.Pages
         private bool isSkuEditorOpen;
         private bool isSkuScanning;
         private bool skuPriceWasEdited;
+        private bool skuItemsChanged;
         private string skuEditorError = string.Empty;
         private static readonly string[] CommonSellingUnits = ["PACK", "BOX", "CARTON", "TRAY", "BOTTLE", "BAG", "SET", "DOZEN"];
 
@@ -1351,8 +1375,13 @@ namespace SenangRetails.Shared.Pages
 
             skuDraft.skuName = skuDraft.skuName.Trim().ToUpperInvariant();
             skuDraft.barcode = string.IsNullOrWhiteSpace(skuDraft.barcode) ? null : skuDraft.barcode.Trim();
-            skuDraft.inventoryAccountID = newItem.MasterAccountID;
-            skuDraft.saveAction = string.IsNullOrWhiteSpace(skuDraft.autoID) ? "Added" : "Changed";
+            var isNewSku = string.IsNullOrWhiteSpace(skuDraft.autoID);
+            skuDraft.isLoading = isNewSku;
+            skuDraft.autoID = isNewSku ? string.Empty : skuDraft.autoID;
+            skuDraft.inventoryAccountID = isNewSku ? string.Empty : newItem.MasterAccountID;
+            if (isNewSku)
+                skuDraft.purchasePrice = 0m;
+            skuDraft.saveAction = isNewSku ? "Added" : "Changed";
             skuDraft.isDirty = true;
 
             if (editingSkuItem == null)
@@ -1363,6 +1392,7 @@ namespace SenangRetails.Shared.Pages
                 if (index >= 0) skuItems[index] = CloneSkuEntry(skuDraft);
             }
 
+            skuItemsChanged = true;
             CloseSkuEditor();
         }
 
@@ -1408,6 +1438,7 @@ namespace SenangRetails.Shared.Pages
                 item.saveAction = "Deleted";
                 item.isDirty = true;
             }
+            skuItemsChanged = true;
         }
 
         private string ValidateSkuItems()
@@ -1426,18 +1457,47 @@ namespace SenangRetails.Shared.Pages
             return string.Empty;
         }
 
-        private List<InventorySkuEntry> BuildSkuEntriesForSave(string? productId = null) => skuItems
-            .Select(item =>
-            {
-                var row = CloneSkuEntry(item);
-                row.inventoryAccountID = productId ?? newItem.MasterAccountID;
-                row.saveAction = string.Equals(item.saveAction, "Deleted", StringComparison.OrdinalIgnoreCase)
-                    ? "Deleted"
-                    : string.IsNullOrWhiteSpace(item.autoID) ? "Added" : "Changed";
-                row.isDirty = true;
-                return row;
-            })
-            .ToList();
+        private List<InventorySkuEntry> BuildSkuEntriesForSave(string? productId = null)
+        {
+            var resolvedProductId = productId ?? newItem.MasterAccountID;
+            return skuItems
+                .Select(item =>
+                {
+                    var row = CloneSkuEntry(item);
+
+                    if (string.Equals(item.saveAction, "Deleted", StringComparison.OrdinalIgnoreCase))
+                    {
+                        row.inventoryAccountID = resolvedProductId;
+                        row.saveAction = "Deleted";
+                        row.isDirty = true;
+                    }
+                    else if (string.IsNullOrWhiteSpace(item.autoID))
+                    {
+                        row.isLoading = true;
+                        row.autoID = string.Empty;
+                        row.inventoryAccountID = string.Empty;
+                        row.purchasePrice = 0m;
+                        row.barcode ??= string.Empty;
+                        row.saveAction = "Added";
+                        row.isDirty = true;
+                    }
+                    else if (item.isDirty)
+                    {
+                        row.inventoryAccountID = resolvedProductId;
+                        row.saveAction = "Changed";
+                        row.isDirty = true;
+                    }
+                    else
+                    {
+                        row.inventoryAccountID = resolvedProductId;
+                        row.saveAction = "NotChanged";
+                        row.isDirty = false;
+                    }
+
+                    return row;
+                })
+                .ToList();
+        }
 
         private static InventorySkuEntry CloneSkuEntry(InventorySkuEntry item) => new()
         {
@@ -1528,7 +1588,9 @@ namespace SenangRetails.Shared.Pages
                 unitOfMeasureName = string.IsNullOrEmpty(unitName) ? null : unitName,
                 uomBase = 1,
                 hasUOM = ViewType == "Product" && ActiveSkuItems.Any(),
-                lstSKU = ViewType == "Product" ? BuildSkuEntriesForSave() : null,
+                lstSKU = ViewType == "Product" && (!isEditingExistingItem || skuItemsChanged)
+                    ? BuildSkuEntriesForSave()
+                    : null,
                 stockReorderLevel = ViewType == "Service" ? (_duration.HasValue ? (decimal)_duration.Value : 0m) : item.StockReorderLevel,
                 branchID = string.IsNullOrEmpty(branch) ? null : branch,
                 hasPackage = true,
@@ -1599,44 +1661,49 @@ namespace SenangRetails.Shared.Pages
 
         private async Task<List<MasterAccountBranchEntry>> BuildBranchEntriesAsync(string? masterAccountId)
         {
-            // Retain the server row IDs and fields when updating branch availability.
-            var entries = new List<MasterAccountBranchEntry>();
+            // Full records can contain duplicate branch rows. Only submit the actual
+            // per-branch changes; resubmitting unchanged rows causes some API versions
+            // to insert those rows again.
+            var existingEntries = new List<MasterAccountBranchEntry>();
             if (!string.IsNullOrEmpty(masterAccountId))
             {
-                var full = await InventoryService.LoadFullPackageDetailAsync(masterAccountId)
-                    ?? throw new InvalidOperationException("Cannot load existing product branches. Please reopen the product.");
-                entries = full.lstMasterAccount_Branch ?? new();
-                foreach (var entry in entries)
+                if (!_loadedBranchEntriesInitialized ||
+                    !string.Equals(_loadedBranchMasterAccountId, masterAccountId, StringComparison.Ordinal))
                 {
-                    if (string.IsNullOrWhiteSpace(entry.autoID))
-                        throw new InvalidOperationException("An existing product branch has no record ID. The update was stopped to avoid creating a duplicate.");
-                    entry.saveAction = "NotChanged";
-                    entry.isDirty = false;
+                    var full = await InventoryService.LoadFullPackageDetailAsync(masterAccountId)
+                        ?? throw new InvalidOperationException("Cannot load existing product branches. Please reopen the product.");
+                    CaptureLoadedBranchEntries(masterAccountId, full.lstMasterAccount_Branch);
                 }
+
+                existingEntries = _loadedBranchEntries.Select(CloneBranchEntry).ToList();
             }
+
+            var changes = new List<MasterAccountBranchEntry>();
             var branchIds = AppState.AvailableBranches.Any()
                 ? AppState.AvailableBranches
                 : new List<string> { !string.IsNullOrEmpty(newItem.BranchID) ? newItem.BranchID : _defaultBranchID };
 
-            foreach (var id in branchIds.Where(id => !string.IsNullOrEmpty(id)).Distinct())
+            foreach (var id in branchIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var isEnabled = _visibleAtBranchIds.Contains(id);
-                var existing = entries.Where(e => e.branchID == id).ToList();
-                if (existing.Count > 0)
+                var existing = existingEntries.FirstOrDefault(entry =>
+                    string.Equals(entry.branchID, id, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
                 {
-                    foreach (var entry in existing)
+                    if (existing.branchPrice != newItem.SalesPrice || existing.isEnabled != isEnabled)
                     {
-                        if (entry.branchPrice != newItem.SalesPrice || entry.isEnabled != isEnabled)
-                        {
-                            entry.branchPrice = newItem.SalesPrice;
-                            entry.isEnabled = isEnabled;
-                            entry.saveAction = "Changed";
-                            entry.isDirty = true;
-                        }
+                        existing.branchPrice = newItem.SalesPrice;
+                        existing.isEnabled = isEnabled;
+                        existing.saveAction = "Changed";
+                        existing.isDirty = true;
+                        changes.Add(existing);
                     }
                     continue;
                 }
-                entries.Add(new MasterAccountBranchEntry
+
+                changes.Add(new MasterAccountBranchEntry
                 {
                     masterAccountID = masterAccountId,
                     branchID = id,
@@ -1647,8 +1714,40 @@ namespace SenangRetails.Shared.Pages
                     isDirty = true
                 });
             }
-            return entries;
+            return changes;
         }
+
+        private void CaptureLoadedBranchEntries(
+            string masterAccountId,
+            IEnumerable<MasterAccountBranchEntry>? branchEntries)
+        {
+            _loadedBranchEntries.Clear();
+            _loadedBranchEntries.AddRange((branchEntries ?? Enumerable.Empty<MasterAccountBranchEntry>())
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.branchID) &&
+                                !string.IsNullOrWhiteSpace(entry.autoID))
+                .GroupBy(entry => entry.branchID, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group
+                    .OrderByDescending(entry => entry.autoID, StringComparer.OrdinalIgnoreCase)
+                    .First())
+                .Select(CloneBranchEntry));
+            _loadedBranchMasterAccountId = masterAccountId;
+            _loadedBranchEntriesInitialized = true;
+        }
+
+        private static MasterAccountBranchEntry CloneBranchEntry(MasterAccountBranchEntry source) => new()
+        {
+            autoID = source.autoID,
+            masterAccountID = source.masterAccountID,
+            branchID = source.branchID,
+            branchPrice = source.branchPrice,
+            isEnabled = source.isEnabled,
+            groupID = source.groupID,
+            saveAction = source.saveAction,
+            isDirty = source.isDirty,
+            AdditionalFields = source.AdditionalFields == null
+                ? null
+                : new Dictionary<string, System.Text.Json.JsonElement>(source.AdditionalFields)
+        };
 
         private void OpenAddProductMode()
         {
@@ -1662,6 +1761,10 @@ namespace SenangRetails.Shared.Pages
             packageItems.Clear();
             membershipCredits.Clear();
             skuItems.Clear();
+            skuItemsChanged = false;
+            _loadedBranchEntries.Clear();
+            _loadedBranchMasterAccountId = null;
+            _loadedBranchEntriesInitialized = false;
             CloseSkuEditor();
             expiryDays = 0;
             isOpenTopUp = false;
@@ -1681,8 +1784,10 @@ namespace SenangRetails.Shared.Pages
             _barcode = "";
             _billOfMaterial = "";
             selectedPriceGroupCode = "";
+            loadedPriceGroupCode = "";
             _originalSalesPrice = 0;
             selectedPromoCode = "";
+            loadedPromoCode = "";
             foreach (var o in outletList) selectedOutletCodes.Add(o.Code);
             _visibleAtBranchIds.Clear();
             foreach (var id in AppState.AvailableBranches) _visibleAtBranchIds.Add(id);
@@ -2323,10 +2428,13 @@ namespace SenangRetails.Shared.Pages
                 {
                     var objInv = BuildInventoryCreateModel(newItem, "Changed");
                     objInv.hasPackage = false; // Product/Service: no package line processing
+                    var branchEntries = objInv.lstSKU is null
+                        ? new List<MasterAccountBranchEntry>()
+                        : await BuildBranchEntriesAsync(newItem.MasterAccountID);
                     var req = new InventoryFullCreateRequest
                     {
                         objInventory = objInv,
-                        lstMasterAccount_Branch = await BuildBranchEntriesAsync(newItem.MasterAccountID)
+                        lstMasterAccount_Branch = branchEntries
                     };
                     result = await InventoryService.UpdateProductFullAsync(req);
                 }
@@ -2364,7 +2472,8 @@ namespace SenangRetails.Shared.Pages
                                 .Select(entry =>
                                 {
                                     var row = CloneSkuEntry(entry);
-                                    row.inventoryAccountID = newId;
+                                    if (!string.Equals(row.saveAction, "Added", StringComparison.OrdinalIgnoreCase))
+                                        row.inventoryAccountID = newId;
                                     return row;
                                 })
                                 .ToList();
@@ -2569,11 +2678,6 @@ namespace SenangRetails.Shared.Pages
                     else
                     {
                         errorMessage = apiMsg;
-                        if (apiMsg.Contains("usp_Inventory_SKU_save", StringComparison.OrdinalIgnoreCase) &&
-                            apiMsg.Contains("@WsPrice1", StringComparison.OrdinalIgnoreCase))
-                        {
-                            errorMessage = "The InventoryFull backend cannot save selling units because usp_Inventory_SKU_save does not supply its required @WsPrice1 parameter. The app sent every lstSKU field documented by the API; this stored-procedure mapping must be fixed on the server.";
-                        }
                     }
                     isErrorPopupOpen = true;
                 }
@@ -2819,6 +2923,10 @@ namespace SenangRetails.Shared.Pages
             packageItems.Clear();
             membershipCredits.Clear();
             skuItems.Clear();
+            skuItemsChanged = false;
+            _loadedBranchEntries.Clear();
+            _loadedBranchMasterAccountId = null;
+            _loadedBranchEntriesInitialized = false;
             CloseSkuEditor();
             expiryDays = 0;
             isOpenTopUp = false;
@@ -2877,7 +2985,9 @@ namespace SenangRetails.Shared.Pages
             _imageName = "";
             _originalSalesPrice = item.SalesPrice;
             selectedPriceGroupCode = "";
+            loadedPriceGroupCode = "";
             selectedPromoCode = "";
+            loadedPromoCode = "";
             isMinMaxPriceEnabled = false;
             isRedeemPointEnabled = false;
             selectedOutletCodes.Clear();
@@ -3072,6 +3182,7 @@ namespace SenangRetails.Shared.Pages
 
                     // Branch visibility — load actual enabled branches from the server
                     var branchList = full?.lstMasterAccount_Branch ?? inner?.lstMasterAccount_Branch;
+                    CaptureLoadedBranchEntries(item.MasterAccountID, branchList);
                     if (branchList != null && branchList.Any())
                     {
                         _visibleAtBranchIds.Clear();
@@ -3093,7 +3204,7 @@ namespace SenangRetails.Shared.Pages
                             {
                                 var row = CloneSkuEntry(saved);
                                 row.inventoryAccountID = item.MasterAccountID;
-                                row.saveAction = string.IsNullOrWhiteSpace(row.autoID) ? "Added" : "Changed";
+                                row.saveAction = string.IsNullOrWhiteSpace(row.autoID) ? "Added" : "NotChanged";
                                 row.isDirty = false;
                                 skuItems.Add(row);
                             }
@@ -3101,6 +3212,7 @@ namespace SenangRetails.Shared.Pages
 
                         ApplySkuItemsToRuntimeProduct(newItem);
                         CacheService.SetSellingUnits(item.MasterAccountID, BuildRuntimeSkuCollection());
+                        skuItemsChanged = false;
                     }
 
                     // Package / TopUp specific data
@@ -3210,6 +3322,8 @@ namespace SenangRetails.Shared.Pages
                     selectedPromoCode = assignedPromotion == null
                         ? ""
                         : GetPromotionSelectionValue(assignedPromotion);
+                    loadedPriceGroupCode = selectedPriceGroupCode;
+                    loadedPromoCode = selectedPromoCode;
                 }
                 catch (Exception ex)
                 {

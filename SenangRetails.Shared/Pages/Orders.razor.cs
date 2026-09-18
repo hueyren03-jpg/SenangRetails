@@ -1771,7 +1771,6 @@ namespace SenangRetails.Shared.Pages
                     ApplyCachedItems(ProductCacheService.Items);
                     await RefreshPriceGroupOverridesAsync();
                     await RefreshInventoryPromotionsAsync(ProductCacheService.Items);
-                    ProductCacheService.TriggerSellingUnitRefresh();
                     StateHasChanged();
                 }
             });
@@ -1840,7 +1839,6 @@ namespace SenangRetails.Shared.Pages
             await RefreshInventoryPromotionsAsync(cachedOrOnlineItems);
             isLoadingItems = false;
             ProductCacheService.TriggerBackgroundRefresh(AppState.SelectedBranchID);
-            ProductCacheService.TriggerSellingUnitRefresh();
 
             var mtResponse = await MembershipTypeService.GetAllMembershipTypesAsync();
             if (mtResponse != null)

@@ -361,3 +361,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local validation, inspection, and disposable build output
+.codex-build/
+scratch/
+
+# Locally downloaded API/test payloads
+scratch_*.ps1
+swagger.json
+token_test.json

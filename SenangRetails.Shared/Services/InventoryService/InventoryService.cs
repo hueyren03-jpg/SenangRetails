@@ -208,39 +208,11 @@ namespace SenangRetails.Shared.Services.InventoryService
             if (response.statusCode is not (>= 200 and < 300))
                 return (false, response.message ?? $"Server returned {response.statusCode}.");
 
-            return await VerifyProductAssignmentsAsync(request.objInventory);
-        }
-
-        private async Task<(bool Success, string Message)> VerifyProductAssignmentsAsync(InventoryCreateModel expected)
-        {
-            InventoryFullLoadDetail? saved;
-            try
-            {
-                saved = (await _ac.LoadFullDetailAsync(expected.masterAccountID!))?.objInventory;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[InventoryService] Assignment verification failed: {ex.Message}");
-                saved = null;
-            }
-            if (saved == null || !string.Equals(saved.masterAccountID, expected.masterAccountID, StringComparison.Ordinal))
-                return (false, "The API accepted the update, but the product could not be reloaded to confirm it. Reopen the product before retrying.");
-
-            static string Normalize(string? value) => value?.Trim() ?? "";
-            static bool Matches(string? left, string? right) => string.Equals(Normalize(left), Normalize(right), StringComparison.Ordinal);
-            var checks = new (string Name, bool Matches)[]
-            {
-                ("Division", Matches(expected.itemDivisionID, saved.itemDivisionID) && Matches(expected.itemDivisionName, saved.itemDivisionName)),
-                ("Department", Matches(expected.itemDepartmentID, saved.itemDepartmentID) && Matches(expected.itemDepartmentName, saved.itemDepartmentName)),
-                ("Category", Matches(expected.itemCategoryID, saved.itemCategoryID) && Matches(expected.itemCategoryName, saved.itemCategoryName)),
-                ("Sub Category", Matches(expected.itemSubCategoryID, saved.itemSubCategoryID) && Matches(expected.itemSubCategoryName, saved.itemSubCategoryName)),
-                ("Brand", Matches(expected.brandName, saved.brandName))
-            };
-            var missing = checks.Where(x => !x.Matches).Select(x => x.Name).ToList();
-            if (missing.Count > 0)
-                return (false, $"The API accepted the update, but InventoryFull/LoadRecord returned different assignments for: {string.Join(", ", missing)}. Other product changes may have been saved. Reopen the product before retrying.");
-
-            return (true, "Product assignments saved and verified.");
+            // Do not immediately reload the full aggregate after a successful update.
+            // InventoryFull/LoadRecord is expensive and the editor already owns the saved values.
+            return (true, !string.IsNullOrWhiteSpace(response.message)
+                ? response.message
+                : "Product updated successfully.");
         }
 
         public async Task<(bool Success, string Message)> UpdateItemAsync(Inventory model)
@@ -283,15 +255,9 @@ namespace SenangRetails.Shared.Services.InventoryService
 
             if (resp.statusCode >= 200 && resp.statusCode < 300)
             {
-                return await VerifyProductAssignmentsAsync(new InventoryCreateModel
-                {
-                    masterAccountID = masterAccountId,
-                    itemDivisionID = itemDivisionID, itemDivisionName = itemDivisionName,
-                    itemDepartmentID = itemDepartmentID, itemDepartmentName = itemDepartmentName,
-                    itemCategoryID = itemCategoryID, itemCategoryName = itemCategoryName,
-                    itemSubCategoryID = itemSubCategoryID, itemSubCategoryName = itemSubCategoryName,
-                    brandName = brandName
-                });
+                return (true, !string.IsNullOrWhiteSpace(resp.message)
+                    ? resp.message
+                    : "Product classification updated successfully.");
             }
 
             return (false, resp.message ?? $"Server returned {resp.statusCode} while saving product classification.");

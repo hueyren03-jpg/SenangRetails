@@ -250,6 +250,10 @@ namespace SenangRetails.Shared.Pages
             {
                 selectedNav = "incomingstocktransfer";
             }
+            else if (uri.Contains("tab=gin") || uri.Contains("tab=goodsissuenote"))
+            {
+                selectedNav = "goodsissuenote";
+            }
         }
 
         private void GoBack()

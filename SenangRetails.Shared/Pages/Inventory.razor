@@ -71,7 +71,7 @@
             </div>
 
             <!-- Operations Group -->
-            <div class="nav-group @(IsVisible("Stock in") || IsVisible("Stock out") || IsVisible("Receive Note") ? "" : "hidden")">
+            <div class="nav-group @(IsVisible("Stock in") || IsVisible("Stock out") || IsVisible("Goods Issue Note") || IsVisible("Receive Note") ? "" : "hidden")">
                 <div class="sidebar-section-header" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;" @onclick="() => IsOperationsOpen = !IsOperationsOpen">
                     <span>Stock Operations</span>
                     <i class="fa-solid fa-chevron-@(IsOperationsOpen ? "down" : "right")" style="font-size: 10px; opacity: 0.6;"></i>
@@ -87,6 +87,11 @@
                             @onclick='() => SelectSection("stockout")'>
                         <span class="nav-icon-fa"><i class="bi bi-calendar-minus-fill"></i></span>
                         <span>Stock Out</span>
+                    </button>
+                    <button class="category-item @(selectedNav == "goodsissuenote" ? "active" : "") @(IsVisible("Goods Issue Note") ? "" : "hidden")"
+                            @onclick='() => SelectSection("goodsissuenote")'>
+                        <span class="nav-icon-fa"><i class="bi bi-box-arrow-up-right"></i></span>
+                        <span>Goods Issue Note</span>
                     </button>
                     <button class="category-item @(selectedNav == "purchaseorder" ? "active" : "")"
                             @onclick='() => SelectSection("purchaseorder")'>
@@ -148,6 +153,9 @@
                 <InventoryStockOut @ref="stockOutComponent" OnToggleNav="ToggleNav"
                                    OnOpenAddProduct='() => OpenAddProductFlow("stockout")'
                                    OnConfirm="HandleStockOutConfirm" />
+                break;
+            case "goodsissuenote":
+                <GoodsIssueNote OnToggleNav="ToggleNav" />
                 break;
             case "deliveryorder":
                 <InventoryDeliveryOrder OnToggleNav="ToggleNav" />

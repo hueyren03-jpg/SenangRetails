@@ -1,0 +1,113 @@
+- generic [ref=f4e3]:
+  - generic [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - button " Back" [ref=f4e7] [cursor=pointer]:
+        - generic [ref=f4e8]: 
+        - generic [ref=f4e9]: Back
+      - button "" [ref=f4e10] [cursor=pointer]
+    - generic [ref=f4e12]: Inventory
+    - generic [ref=f4e13]:
+      - textbox "Search menu..." [ref=f4e14]
+      - generic [ref=f4e15]: 
+    - generic [ref=f4e17]:
+      - generic [ref=f4e18]:
+        - generic [ref=f4e19] [cursor=pointer]:
+          - generic [ref=f4e20]: Overview
+          - generic [ref=f4e21]: 
+        - button " Stock Summary" [ref=f4e22] [cursor=pointer]:
+          - generic [ref=f4e23]: 
+          - generic [ref=f4e25]: Stock Summary
+        - button " Stock Balance" [ref=f4e26] [cursor=pointer]:
+          - generic [ref=f4e27]: 
+          - generic [ref=f4e29]: Stock Balance
+        - button " Stock Movement" [ref=f4e30] [cursor=pointer]:
+          - generic [ref=f4e31]: 
+          - generic [ref=f4e33]: Stock Movement
+        - button " Stock Transaction" [ref=f4e34] [cursor=pointer]:
+          - generic [ref=f4e35]: 
+          - generic [ref=f4e37]: Stock Transaction
+      - generic [ref=f4e38]:
+        - generic [ref=f4e39] [cursor=pointer]:
+          - generic [ref=f4e40]: Stock Operations
+          - generic [ref=f4e41]: 
+        - button " Stock In" [ref=f4e42] [cursor=pointer]:
+          - generic [ref=f4e43]: 
+          - generic [ref=f4e45]: Stock In
+        - button " Stock Out" [ref=f4e46] [cursor=pointer]:
+          - generic [ref=f4e47]: 
+          - generic [ref=f4e49]: Stock Out
+        - button " Goods Issue Note" [ref=f4e50] [cursor=pointer]:
+          - generic [ref=f4e51]: 
+          - generic [ref=f4e53]: Goods Issue Note
+        - button " Purchase Order" [ref=f4e54] [cursor=pointer]:
+          - generic [ref=f4e55]: 
+          - generic [ref=f4e57]: Purchase Order
+        - button " Receive Note" [ref=f4e58] [cursor=pointer]:
+          - generic [ref=f4e59]: 
+          - generic [ref=f4e61]: Receive Note
+        - button " Stock Transfer" [ref=f4e62] [cursor=pointer]:
+          - generic [ref=f4e63]: 
+          - generic [ref=f4e65]: Stock Transfer
+  - generic [ref=f4e67]:
+    - banner [ref=f4e68]:
+      - generic [ref=f4e69]:
+        - button "Back" [ref=f4e70] [cursor=pointer]:
+          - generic [ref=f4e71]: 
+        - button "Inventory menu" [ref=f4e72] [cursor=pointer]:
+          - generic [ref=f4e73]: 
+      - generic [ref=f4e74]:
+        - heading "Goods Issue Note" [level=1] [ref=f4e75]
+        - generic [ref=f4e76]: Stock issue
+      - button "Refresh" [ref=f4e78] [cursor=pointer]:
+        - generic [ref=f4e79]: 
+    - main [ref=f4e80]:
+      - generic [ref=f4e81]:
+        - generic [ref=f4e82]:
+          - heading "Goods Issue Notes" [level=2] [ref=f4e83]
+          - paragraph [ref=f4e84]: Issue stock for internal use and adjustments.
+        - button "+ New GIN" [ref=f4e85] [cursor=pointer]:
+          - generic [ref=f4e86]: +
+          - generic [ref=f4e87]: New GIN
+      - region "GIN summary" [ref=f4e88]:
+        - generic [ref=f4e89]:
+          - generic [ref=f4e90]: Documents
+          - strong [ref=f4e91]: "1"
+        - generic [ref=f4e92]:
+          - generic [ref=f4e93]: Issued quantity
+          - strong [ref=f4e94]: "1"
+        - generic [ref=f4e95]:
+          - generic [ref=f4e96]: Stock value
+          - strong [ref=f4e97]: RM 0.00
+      - region "Document filters" [ref=f4e98]:
+        - generic [ref=f4e99]:
+          - generic [ref=f4e100]: 
+          - searchbox "Search goods issue notes" [ref=f4e101]
+        - generic [ref=f4e102]:
+          - generic [ref=f4e103]: Status
+          - combobox "Status" [ref=f4e104]:
+            - option "All" [selected]
+            - option "Draft"
+            - option "Posted"
+            - option "Void"
+        - generic [ref=f4e105]:
+          - generic [ref=f4e106]: From
+          - textbox "From date" [ref=f4e107]: 2026-08-18
+        - generic [ref=f4e108]:
+          - generic [ref=f4e109]: To
+          - textbox "To date" [ref=f4e110]: 2026-09-18
+      - region "Goods issue notes" [ref=f4e111]:
+        - generic [ref=f4e112]:
+          - generic [ref=f4e113]: GIN number
+          - generic [ref=f4e114]: Date
+          - generic [ref=f4e115]: Activity
+          - generic [ref=f4e116]: Items
+          - generic [ref=f4e117]: Value
+          - generic [ref=f4e118]: Status
+        - button "HQ0000000013369 17 Sept 2026 Internal Use 1 RM 0.00 Posted " [ref=f4e119] [cursor=pointer]:
+          - strong [ref=f4e121]: HQ0000000013369
+          - generic [ref=f4e122]: 17 Sept 2026
+          - generic [ref=f4e123]: Internal Use
+          - generic [ref=f4e124]: "1"
+          - generic [ref=f4e125]: RM 0.00
+          - generic [ref=f4e126]: Posted
+          - generic [ref=f4e128]: 
