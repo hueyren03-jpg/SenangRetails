@@ -669,6 +669,7 @@
                 }
 
                 draft.Status = GinStatus.Posted;
+                deletedServerLines.Clear();
                 messageType = "success";
                 messageText = updateResult.Message;
             }
@@ -729,15 +730,19 @@
             : new GinDocumentDto();
 
         var header = request.mobjDoc_Stock_GIN;
+        header.DocumentTypeID = (int)EBI.Enum.EnumDocumentType.GIN;
         header.BranchID = draft.BranchId;
         header.EditBranchID = draft.BranchId;
         header.FinancialDate = draft.FinancialDate;
         header.PostingDate = draft.PostingDate;
+        header.IsPostingDateDifferent = draft.PostingDate.Date != draft.FinancialDate.Date;
         header.ReferenceNumber = draft.ReferenceNumber;
         header.AccountName = draft.AccountName;
         header.Remarks = draft.Remarks;
         header.StockActivityType = draft.Activity;
         header.GroupID = AppState.SelectedBranchGroupID;
+        header.TotalBeforeTax = draft.TotalValue;
+        header.TotalAfterTax = draft.TotalValue;
         header.SaveAction = isEditingExisting ? "Changed" : "Added";
         header.IsDirty = true;
 
@@ -749,6 +754,7 @@
             var row = line.Source ?? new GinLineDto();
 
             row.LineOrder = lineOrder++;
+            row.OwnerDocumentTypeID = (int)EBI.Enum.EnumDocumentType.GIN;
             row.Description = line.ItemName;
             row.ItemName = line.ItemName;
             row.InventoryTypeID = line.InventoryTypeId;
@@ -757,6 +763,8 @@
             row.Quantity = line.Quantity;
             row.UnitPrice = line.Cost;
             row.Cost = line.Cost;
+            row.SubTotal = line.Total;
+            row.SubTotalBeforeGST = line.Total;
             row.UnitOfMeasurementID = line.UomId;
             row.SKUQuantity = line.SkuQuantity == 0 ? 1 : line.SkuQuantity;
             row.BranchID = draft.BranchId;
