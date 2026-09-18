@@ -435,7 +435,7 @@ namespace SenangRetails.Shared.Services.InventoryService
                 };
             }
 
-            var transferDocumentId = response.result;
+            var transferDocumentId = response.result?.Id;
             if (string.IsNullOrWhiteSpace(transferDocumentId))
             {
                 return new StockTransferSaveResult
@@ -504,7 +504,7 @@ namespace SenangRetails.Shared.Services.InventoryService
 
             var transferDocumentId = !string.IsNullOrWhiteSpace(request.objDoc_StockTransfer.DocumentID)
                 ? request.objDoc_StockTransfer.DocumentID
-                : response.result;
+                : response.result?.Id;
 
             if (string.IsNullOrWhiteSpace(transferDocumentId))
             {
