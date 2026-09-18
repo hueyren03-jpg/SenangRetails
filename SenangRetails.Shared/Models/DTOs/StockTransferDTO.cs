@@ -1,15 +1,65 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SenangRetails.Shared.Models.DTOs
 {
 
+    [JsonConverter(typeof(StockTransferApiResultConverter))]
     public sealed class StockTransferApiResult
     {
         public string? Id { get; set; }
         public string? DisplayCode { get; set; }
         public string? SuccessMessage { get; set; }
+    }
+
+    public sealed class StockTransferApiResultConverter : JsonConverter<StockTransferApiResult>
+    {
+        public override StockTransferApiResult? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                return new StockTransferApiResult
+                {
+                    Id = reader.GetString()
+                };
+            }
+
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+
+            using var document = JsonDocument.ParseValue(ref reader);
+            var root = document.RootElement;
+
+            return new StockTransferApiResult
+            {
+                Id = GetString(root, "Id"),
+                DisplayCode = GetString(root, "DisplayCode"),
+                SuccessMessage = GetString(root, "SuccessMessage")
+            };
+        }
+
+        public override void Write(Utf8JsonWriter writer, StockTransferApiResult value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("Id", value.Id);
+            writer.WriteString("DisplayCode", value.DisplayCode);
+            writer.WriteString("SuccessMessage", value.SuccessMessage);
+            writer.WriteEndObject();
+        }
+
+        private static string? GetString(JsonElement root, string propertyName)
+        {
+            foreach (var property in root.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    return property.Value.ValueKind == JsonValueKind.Null ? null : property.Value.ToString();
+            }
+
+            return null;
+        }
     }
 
     public sealed class StockTransferSaveResult
