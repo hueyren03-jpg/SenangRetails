@@ -370,3 +370,6 @@ scratch/
 scratch_*.ps1
 swagger.json
 token_test.json
+
+# Local Playwright inspection artifacts
+.playwright-cli/
