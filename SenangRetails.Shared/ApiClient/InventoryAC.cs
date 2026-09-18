@@ -608,7 +608,7 @@ namespace SenangRetails.Shared.ApiClient
                 "api/Doc_Stock_GIN/LoadRecord", new { id = documentId });
         }
 
-        public async Task<ApiResponseRoot<List<GinHeaderDto>>?> DocStockGINLoadProxy(
+        public async Task<ApiResponseRoot<List<Doc_Stock_GINDM>>?> DocStockGINLoadProxy(
             string branchId,
             DateTime startDate,
             DateTime endDate,
@@ -616,7 +616,7 @@ namespace SenangRetails.Shared.ApiClient
             int pageSize)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<List<GinHeaderDto>>>(
+            return await PostAsync<object, ApiResponseRoot<List<Doc_Stock_GINDM>>>(
                 "api/Doc_Stock_GIN/LoadProxy",
                 new
                 {
