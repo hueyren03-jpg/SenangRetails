@@ -4,6 +4,18 @@ using System.Linq;
 
 namespace SenangRetails.Shared.Models.DTOs
 {
+
+    public sealed class StockTransferSaveResult
+    {
+        public bool TransferSaved { get; init; }
+        public bool GinSaved { get; init; }
+        public bool Success => TransferSaved && GinSaved;
+        public bool IsPartialSuccess => TransferSaved && !GinSaved;
+        public string Message { get; init; } = "";
+        public string? TransferDocumentId { get; init; }
+        public string? GinDocumentId { get; init; }
+    }
+
     public class StockTransferModel
     {
         public string DocNo { get; set; } = "";
