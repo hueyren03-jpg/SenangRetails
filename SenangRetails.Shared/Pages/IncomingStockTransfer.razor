@@ -404,6 +404,7 @@
 
     private bool isEditing = false;
     private string editingDocNumber = "";
+    private DateTime? editingFinancialDate;
     private string selectedFromBranchID = "";
     private string selectedFromBranchName = "";
     private string selectedToBranchID = "";
@@ -430,8 +431,6 @@
     private string calculatorType = "";
     private bool isLocalCalculatorOpen = false;
     private double calculatorInitialValue = 0;
-
-    private bool IsSuccessCreating = false;
 
     // Dynamic calculations
     private int TotalSku => stockInItems.Count(i => i.StockInQuantity > 0);
@@ -668,6 +667,7 @@
         }
 
         editingDocNumber = entry.objDoc_StockTransfer.DocumentID;
+        editingFinancialDate = entry.objDoc_StockTransfer.FinancialDate;
         remarks = entry.objDoc_StockTransfer.Remarks;
 
         // Find from branch details
@@ -704,6 +704,7 @@
     {
         isEditing = false;
         editingDocNumber = "";
+        editingFinancialDate = null;
         remarks = "";
         selectedFromBranchID = "";
         selectedFromBranchName = "";
@@ -919,7 +920,9 @@
         request.objDoc_StockTransfer.FromBranch = fromBranchName;
         request.objDoc_StockTransfer.ToBranchID = selectedToBranchID;
         request.objDoc_StockTransfer.ToBranch = toBranchName;
-        request.objDoc_StockTransfer.FinancialDate = DateTime.Now;
+        request.objDoc_StockTransfer.FinancialDate = isEditing && editingFinancialDate.HasValue
+            ? editingFinancialDate.Value
+            : DateTime.Now;
         request.objDoc_StockTransfer.Remarks = remarks;
 
         if (isEditing)
@@ -966,16 +969,17 @@
             System.Diagnostics.Debug.WriteLine($"[ConfirmStockTransfer] Error serializing Transfer request: {ex.Message}");
         }
 
+        StockTransferSaveResult saveResult;
         if (isEditing)
         {
-            IsSuccessCreating = await InventoryService.UpdateStockTransfer(request);
+            saveResult = await InventoryService.UpdateStockTransfer(request);
         }
         else
         {
-            IsSuccessCreating = await InventoryService.CreateStockTransfer(request);
+            saveResult = await InventoryService.CreateStockTransfer(request);
         }
 
-        if (IsSuccessCreating)
+        if (saveResult.TransferSaved)
         {
             // Add to session history
             var localItems = stockInItems.Where(i => i.StockInQuantity > 0).Select(i => new StockTransferHistoryItem
@@ -993,7 +997,8 @@
 
             var newEntry = new StockTransferHistoryEntry
             {
-                DocNumber = isEditing ? editingDocNumber : $"TRF-NEW-{new Random().Next(1000, 9999)}",
+                DocNumber = saveResult.TransferDocumentId
+                    ?? (isEditing ? editingDocNumber : "Transfer created"),
                 Date = DateTime.Now,
                 Remarks = remarks,
                 FromBranch = selectedFromBranchName,
@@ -1004,22 +1009,29 @@
             };
             stockTransferHistory.Insert(0, newEntry);
             
-            // Set notification message first
-            notificationMessage = isEditing ? "Stock transfer updated successfully." : "Stock transfer created successfully.";
-            notificationType = "success";
+            notificationMessage = saveResult.GinSaved
+                ? (isEditing
+                    ? "Stock transfer and related GIN updated successfully."
+                    : "Stock transfer and GIN created successfully.")
+                : saveResult.Message;
+            notificationType = saveResult.GinSaved ? "success" : "warning";
             isNotificationVisible = true;
 
-            // Clear current items and reset edit mode
+            // The transfer itself is already saved even if GIN synchronization failed.
+            // Clear the editor so the user does not accidentally create a duplicate transfer by retrying.
             stockInItems.Clear();
             remarks = "";
             isEditing = false;
             editingDocNumber = "";
+            editingFinancialDate = null;
 
             await OnConfirm.InvokeAsync();
         }
         else
         {
-            notificationMessage = isEditing ? "Failed to update stock transfer." : "Failed to create stock transfer.";
+            notificationMessage = string.IsNullOrWhiteSpace(saveResult.Message)
+                ? (isEditing ? "Failed to update stock transfer." : "Failed to create stock transfer.")
+                : saveResult.Message;
             notificationType = "danger";
             isNotificationVisible = true;
         }
