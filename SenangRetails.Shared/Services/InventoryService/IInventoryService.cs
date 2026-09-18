@@ -25,6 +25,17 @@ namespace SenangRetails.Shared.Services.InventoryService
         Task<List<LowStockItem>?> GetStockBelowReorderPointAsync();
         Task<Dictionary<string, StockBalanceItem>?> GetStockBalanceByBranchAndByItemAsync(StockBalanceRequest request);
         Task<bool> CreateStockInGRN(EBI.UC.Doc_Stock_GRN request);
+
+        // Goods Issue Note (GIN)
+        Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(Doc_Stock_GIN request);
+        Task<(bool Success, string Message)> UpdateStockGINAsync(Doc_Stock_GIN request);
+        Task<Doc_Stock_GIN?> GetStockGINRecordAsync(string documentId);
+        Task<List<Doc_Stock_GINDM>?> GetStockGINRecordsAsync(
+            string branchId,
+            DateTime startDate,
+            DateTime endDate,
+            int pageNumber,
+            int pageSize);
         Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentByBranchIdAsync(string? branchId = null);
         Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentDetailsAsync(string documentId);
         Task<ApiResponseRoot<string>?> AcceptStockInAsync(string documentId);
