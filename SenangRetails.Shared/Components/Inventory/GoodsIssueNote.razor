@@ -684,6 +684,8 @@
 
                 draft.Status = GinStatus.Posted;
                 draft.DocumentId = createResult.DocumentId ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(draft.DocumentId))
+                    request.mobjDoc_Stock_GIN.DocumentID = draft.DocumentId;
                 loadedGin = request;
                 isEditingExisting = true;
                 messageType = "success";
