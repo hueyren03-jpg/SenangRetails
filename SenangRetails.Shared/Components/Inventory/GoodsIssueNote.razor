@@ -65,7 +65,6 @@
                     <i class="fa-solid fa-filter"></i>
                     <select @bind="statusFilter" aria-label="Status">
                         <option value="All">All status</option>
-                        <option value="Draft">Draft</option>
                         <option value="Posted">Posted</option>
                         <option value="Void">Void</option>
                     </select>
@@ -281,7 +280,7 @@
             <footer class="gin-bottom-action-bar">
                 <button type="button" class="gin-secondary-button" @onclick="SaveDraft" disabled="@isSaving">
                     <i class="fa-regular fa-floppy-disk"></i>
-                    Save Draft
+                    Save
                 </button>
                 <button type="button" class="gin-primary-button" @onclick="PostDocument" disabled="@isSaving">
                     @if (isSaving)
@@ -292,7 +291,7 @@
                     {
                         <i class="fa-solid fa-check"></i>
                     }
-                    Post Issue
+                    @(isEditingExisting ? "Update & Close" : "Create & Close")
                 </button>
             </footer>
         </main>
@@ -318,30 +317,18 @@
         "Stock Adjustment"
     ];
 
-    private readonly List<GinDocumentSummary> documents =
-    [
-        new()
-        {
-            DocumentId = "HQ0000000013369",
-            DocumentNumber = "HQ0000000013369",
-            BranchId = "AM",
-            FinancialDate = new DateTime(2026, 9, 17),
-            Activity = "Internal Use",
-            ReferenceNumber = "",
-            ItemCount = 1,
-            TotalQuantity = 1,
-            TotalValue = 0,
-            Status = "Posted"
-        }
-    ];
-
+    private List<GinDocumentSummary> documents = [];
     private List<InventoryDM> availableItems = [];
+    private readonly List<DocumentLineTableDM> deletedServerLines = [];
+
     private GinDraft draft = new();
+    private EBI.UC.Doc_Stock_GIN? loadedGin;
     private bool isEditorOpen;
     private bool isEditingExisting;
     private bool showItemPicker;
     private bool activityMenuOpen;
     private bool isSaving;
+    private bool isLoadingDocuments;
     private string searchText = string.Empty;
     private string statusFilter = "All";
     private DateTime filterFrom = DateTime.Today.AddMonths(-1);
@@ -360,22 +347,75 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID;
+        var branchId = ResolveBranchId();
         draft = NewDraft(branchId);
+
         await LoadItemsAsync();
+        await LoadDocumentsAsync();
     }
+
+    private string ResolveBranchId() =>
+        string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            ? AppState.CurrentBranch?.BranchID ?? "HQ"
+            : AppState.SelectedBranchID;
 
     private async Task LoadItemsAsync()
     {
         try
         {
-            var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID;
-            availableItems = await InventoryService.LoadItemsAsync(branchId) ?? [];
+            availableItems = await InventoryService.LoadItemsAsync(ResolveBranchId()) ?? [];
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[GoodsIssueNote] Unable to load items: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine("[GoodsIssueNote] Unable to load items: " + ex.Message);
             availableItems = [];
+        }
+    }
+
+    private async Task LoadDocumentsAsync()
+    {
+        if (isLoadingDocuments) return;
+
+        isLoadingDocuments = true;
+        try
+        {
+            var endDate = filterTo.Date.AddDays(1).AddTicks(-1);
+            var records = await InventoryService.GetStockGINRecordsAsync(
+                ResolveBranchId(),
+                filterFrom.Date,
+                endDate,
+                1,
+                200) ?? [];
+
+            documents = records
+                .Where(record => record != null)
+                .Select(record => new GinDocumentSummary
+                {
+                    DocumentId = record.DocumentID ?? string.Empty,
+                    DocumentNumber = string.IsNullOrWhiteSpace(record.DisplayCode)
+                        ? record.DocumentID ?? string.Empty
+                        : record.DisplayCode,
+                    BranchId = record.BranchID ?? ResolveBranchId(),
+                    FinancialDate = record.FinancialDate,
+                    Activity = string.IsNullOrWhiteSpace(record.StockActivityType)
+                        ? "Stock Issue"
+                        : record.StockActivityType,
+                    ReferenceNumber = record.ReferenceNumber ?? string.Empty,
+                    TotalValue = record.TotalAfterTax,
+                    Status = record.IsVoid ? "Void" : "Posted"
+                })
+                .Where(record => !string.IsNullOrWhiteSpace(record.DocumentId))
+                .OrderByDescending(record => record.FinancialDate)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[GoodsIssueNote] Unable to load GIN records: " + ex.Message);
+            ShowError("Unable to load goods issue notes from the server.");
+        }
+        finally
+        {
+            isLoadingDocuments = false;
         }
     }
 
@@ -390,43 +430,100 @@
 
     private void OpenNewDocument()
     {
-        var branchId = string.IsNullOrWhiteSpace(AppState.SelectedBranchID) ? "HQ" : AppState.SelectedBranchID;
-        draft = NewDraft(branchId);
+        draft = NewDraft(ResolveBranchId());
+        loadedGin = null;
+        deletedServerLines.Clear();
         isEditingExisting = false;
         isEditorOpen = true;
         activityMenuOpen = false;
         DismissMessage();
     }
 
-    private void OpenDocument(GinDocumentSummary document)
+    private async Task OpenDocument(GinDocumentSummary document)
     {
+        DismissMessage();
+        isSaving = true;
+
+        try
+        {
+            var record = await InventoryService.GetStockGINRecordAsync(document.DocumentId);
+            if (record?.mobjDoc_Stock_GIN == null)
+            {
+                ShowError("Unable to load this GIN record.");
+                return;
+            }
+
+            loadedGin = record;
+            deletedServerLines.Clear();
+            ApplyRecordToDraft(record);
+            isEditingExisting = true;
+            isEditorOpen = true;
+            activityMenuOpen = false;
+            UpdateSummaryFromDraft();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[GoodsIssueNote] LoadRecord failed: " + ex.Message);
+            ShowError("Unable to load this GIN record.");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ApplyRecordToDraft(EBI.UC.Doc_Stock_GIN record)
+    {
+        var header = record.mobjDoc_Stock_GIN;
+
         draft = new GinDraft
         {
-            DocumentId = document.DocumentId,
-            DocumentNumber = document.DocumentNumber,
-            BranchId = document.BranchId,
-            Activity = document.Activity,
-            FinancialDate = document.FinancialDate,
-            PostingDate = document.FinancialDate,
-            ReferenceNumber = document.ReferenceNumber,
-            Status = Enum.TryParse<GinStatus>(document.Status, true, out var status) ? status : GinStatus.Draft,
-            Lines =
-            [
-                new GinLine
-                {
-                    ItemId = "HQ0000000045263",
-                    ItemCode = "Z28",
-                    ItemName = "Abalone Slice",
-                    Uom = "UNIT",
-                    Quantity = 1,
-                    Cost = 0
-                }
-            ]
+            DocumentId = header.DocumentID ?? string.Empty,
+            DocumentNumber = string.IsNullOrWhiteSpace(header.DisplayCode)
+                ? header.DocumentID ?? string.Empty
+                : header.DisplayCode,
+            BranchId = string.IsNullOrWhiteSpace(header.BranchID) ? ResolveBranchId() : header.BranchID,
+            Activity = string.IsNullOrWhiteSpace(header.StockActivityType) ? "Internal Use" : header.StockActivityType,
+            FinancialDate = header.FinancialDate == default ? DateTime.Today : header.FinancialDate,
+            PostingDate = header.PostingDate == default ? header.FinancialDate : header.PostingDate,
+            ReferenceNumber = header.ReferenceNumber ?? string.Empty,
+            AccountName = header.AccountName ?? string.Empty,
+            Remarks = header.Remarks ?? string.Empty,
+            Status = header.IsVoid ? GinStatus.Void : GinStatus.Posted,
+            Lines = (record.lstDocumentLine ?? [])
+                .Where(line => line.SaveAction != EBI.Enum.EntityState.Deleted)
+                .Select(ToDraftLine)
+                .ToList()
         };
-        isEditingExisting = true;
-        isEditorOpen = true;
-        activityMenuOpen = false;
-        DismissMessage();
+    }
+
+    private GinLine ToDraftLine(DocumentLineTableDM line)
+    {
+        var itemId = line.InventoryItemAccountID ?? line.LineItemID ?? string.Empty;
+        var inventory = availableItems.FirstOrDefault(item =>
+            string.Equals(item.MasterAccountID, itemId, StringComparison.OrdinalIgnoreCase));
+
+        var cost = line.Cost != 0 ? line.Cost : line.UnitPrice;
+
+        return new GinLine
+        {
+            Source = line,
+            ItemId = itemId,
+            ItemCode = !string.IsNullOrWhiteSpace(line.LineItemDisplayCode)
+                ? line.LineItemDisplayCode
+                : inventory?.ProductCode ?? line.LineItemID ?? itemId,
+            ItemName = !string.IsNullOrWhiteSpace(line.Description)
+                ? line.Description
+                : !string.IsNullOrWhiteSpace(line.ItemName)
+                    ? line.ItemName
+                    : inventory?.AccountName ?? "Unnamed item",
+            UomId = line.UnitOfMeasurementID ?? inventory?.UnitOfMeasureID ?? string.Empty,
+            Uom = inventory?.UnitOfMeasureName ?? line.UnitOfMeasurementID ?? "UNIT",
+            InventoryTypeId = line.InventoryTypeID,
+            SkuQuantity = line.SKUQuantity,
+            Quantity = line.Quantity,
+            Cost = cost
+        };
     }
 
     private void CloseEditor()
@@ -434,6 +531,8 @@
         isEditorOpen = false;
         showItemPicker = false;
         activityMenuOpen = false;
+        loadedGin = null;
+        deletedServerLines.Clear();
         DismissMessage();
     }
 
@@ -508,7 +607,10 @@
                 ItemId = itemId,
                 ItemCode = string.IsNullOrWhiteSpace(item.ProductCode) ? itemId : item.ProductCode,
                 ItemName = item.AccountName ?? "Unnamed item",
+                UomId = item.UnitOfMeasureID ?? string.Empty,
                 Uom = item.UnitOfMeasureName ?? item.UnitOfMeasureID ?? "UNIT",
+                InventoryTypeId = item.InventoryTypeID,
+                SkuQuantity = item.UOMBase == 0 ? 1 : item.UOMBase,
                 Quantity = 1,
                 Cost = item.PurchasePrice
             });
@@ -517,7 +619,17 @@
         CloseItemPicker();
     }
 
-    private void RemoveLine(GinLine line) => draft.Lines.Remove(line);
+    private void RemoveLine(GinLine line)
+    {
+        if (line.Source != null && !string.IsNullOrWhiteSpace(line.Source.DocumentLineID))
+        {
+            line.Source.SaveAction = EBI.Enum.EntityState.Deleted;
+            line.Source.IsDirty = true;
+            deletedServerLines.Add(line.Source);
+        }
+
+        draft.Lines.Remove(line);
+    }
 
     private void ChangeQuantity(GinLine line, int delta)
     {
@@ -526,34 +638,148 @@
 
     private async Task SaveDraft()
     {
-        if (!ValidateDraft())
-        {
-            return;
-        }
-
-        isSaving = true;
-        await Task.Delay(250);
-        draft.Status = GinStatus.Draft;
-        UpsertDocumentSummary("Draft");
-        isSaving = false;
-        messageType = "success";
-        messageText = "Draft is ready. API persistence will use this document structure.";
+        await PersistGINAsync(closeAfterSave: false);
     }
 
     private async Task PostDocument()
     {
-        if (!ValidateDraft())
-        {
+        await PersistGINAsync(closeAfterSave: true);
+    }
+
+    private async Task PersistGINAsync(bool closeAfterSave)
+    {
+        if (!ValidateDraft() || isSaving)
             return;
-        }
 
         isSaving = true;
-        await Task.Delay(300);
-        draft.Status = GinStatus.Posted;
-        UpsertDocumentSummary("Posted");
-        isSaving = false;
-        messageType = "success";
-        messageText = "GIN is ready to post. API persistence will be connected to this action.";
+        DismissMessage();
+
+        try
+        {
+            var request = BuildGINRequest();
+
+            if (isEditingExisting)
+            {
+                var updateResult = await InventoryService.UpdateStockGINAsync(request);
+                if (!updateResult.Success)
+                {
+                    ShowError(updateResult.Message);
+                    return;
+                }
+
+                draft.Status = GinStatus.Posted;
+                messageType = "success";
+                messageText = updateResult.Message;
+            }
+            else
+            {
+                var createResult = await InventoryService.CreateStockGINAsync(request);
+                if (!createResult.Success)
+                {
+                    ShowError(createResult.Message);
+                    return;
+                }
+
+                draft.Status = GinStatus.Posted;
+                draft.DocumentId = createResult.DocumentId ?? string.Empty;
+                loadedGin = request;
+                isEditingExisting = true;
+                messageType = "success";
+                messageText = createResult.Message;
+            }
+
+            if (!string.IsNullOrWhiteSpace(draft.DocumentId))
+            {
+                var saved = await InventoryService.GetStockGINRecordAsync(draft.DocumentId);
+                if (saved?.mobjDoc_Stock_GIN != null)
+                {
+                    loadedGin = saved;
+                    ApplyRecordToDraft(saved);
+                }
+            }
+
+            await LoadDocumentsAsync();
+            UpdateSummaryFromDraft();
+
+            if (closeAfterSave)
+            {
+                isEditorOpen = false;
+                showItemPicker = false;
+                activityMenuOpen = false;
+                loadedGin = null;
+                deletedServerLines.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("[GoodsIssueNote] Save failed: " + ex.Message);
+            ShowError("Failed to save the goods issue note.");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private EBI.UC.Doc_Stock_GIN BuildGINRequest()
+    {
+        var request = isEditingExisting && loadedGin != null
+            ? loadedGin
+            : new EBI.UC.Doc_Stock_GIN();
+
+        var header = request.mobjDoc_Stock_GIN;
+        header.BranchID = draft.BranchId;
+        header.EditBranchID = draft.BranchId;
+        header.FinancialDate = draft.FinancialDate;
+        header.PostingDate = draft.PostingDate;
+        header.ReferenceNumber = draft.ReferenceNumber;
+        header.AccountName = draft.AccountName;
+        header.Remarks = draft.Remarks;
+        header.StockActivityType = draft.Activity;
+        header.GroupID = AppState.SelectedBranchGroupID;
+        header.SaveAction = isEditingExisting
+            ? EBI.Enum.EntityState.Changed
+            : EBI.Enum.EntityState.Added;
+        header.IsDirty = true;
+
+        request.lstDocumentLine.Clear();
+
+        var lineOrder = 0;
+        foreach (var line in draft.Lines)
+        {
+            var row = line.Source ?? new DocumentLineTableDM();
+
+            row.LineOrder = lineOrder++;
+            row.Description = line.ItemName;
+            row.ItemName = line.ItemName;
+            row.InventoryTypeID = line.InventoryTypeId;
+            row.InventoryItemAccountID = line.ItemId;
+            row.LineItemID = line.ItemId;
+            row.Quantity = line.Quantity;
+            row.UnitPrice = line.Cost;
+            row.Cost = line.Cost;
+            row.UnitOfMeasurementID = line.UomId;
+            row.SKUQuantity = line.SkuQuantity == 0 ? 1 : line.SkuQuantity;
+            row.BranchID = draft.BranchId;
+            row.EditBranchID = draft.BranchId;
+            row.GroupID = AppState.SelectedBranchGroupID;
+            row.FinancialDate = draft.FinancialDate;
+            row.SaveAction = line.Source == null
+                ? EBI.Enum.EntityState.Added
+                : EBI.Enum.EntityState.Changed;
+            row.IsDirty = true;
+
+            request.lstDocumentLine.Add(row);
+        }
+
+        foreach (var deletedLine in deletedServerLines)
+        {
+            deletedLine.SaveAction = EBI.Enum.EntityState.Deleted;
+            deletedLine.IsDirty = true;
+            request.lstDocumentLine.Add(deletedLine);
+        }
+
+        return request;
     }
 
     private bool ValidateDraft()
@@ -579,22 +805,20 @@
         return true;
     }
 
-    private void UpsertDocumentSummary(string status)
+    private void UpdateSummaryFromDraft()
     {
         if (string.IsNullOrWhiteSpace(draft.DocumentId))
-        {
-            draft.DocumentId = $"LOCAL-{DateTime.Now:yyyyMMddHHmmss}";
-            draft.DocumentNumber = "Auto-generated";
-        }
+            return;
 
-        var summary = documents.FirstOrDefault(item => item.DocumentId == draft.DocumentId);
+        var summary = documents.FirstOrDefault(item =>
+            string.Equals(item.DocumentId, draft.DocumentId, StringComparison.OrdinalIgnoreCase));
+
         if (summary == null)
-        {
-            summary = new GinDocumentSummary { DocumentId = draft.DocumentId };
-            documents.Add(summary);
-        }
+            return;
 
-        summary.DocumentNumber = draft.DocumentNumber;
+        if (!string.IsNullOrWhiteSpace(draft.DocumentNumber))
+            summary.DocumentNumber = draft.DocumentNumber;
+
         summary.BranchId = draft.BranchId;
         summary.FinancialDate = draft.FinancialDate;
         summary.Activity = draft.Activity;
@@ -602,8 +826,7 @@
         summary.ItemCount = draft.Lines.Count;
         summary.TotalQuantity = draft.Lines.Sum(line => line.Quantity);
         summary.TotalValue = draft.TotalValue;
-        summary.Status = status;
-        isEditingExisting = true;
+        summary.Status = draft.Status == GinStatus.Void ? "Void" : "Posted";
     }
 
     private void ShowError(string text)
@@ -619,7 +842,12 @@
     }
 
     private void ClearSearch() => searchText = string.Empty;
-    private void RefreshList() => StateHasChanged();
+
+    private async Task RefreshList()
+    {
+        await LoadDocumentsAsync();
+        StateHasChanged();
+    }
 
     private sealed class GinDraft
     {
@@ -639,10 +867,14 @@
 
     private sealed class GinLine
     {
+        public DocumentLineTableDM? Source { get; set; }
         public string ItemId { get; set; } = string.Empty;
         public string ItemCode { get; set; } = string.Empty;
         public string ItemName { get; set; } = string.Empty;
+        public string UomId { get; set; } = string.Empty;
         public string Uom { get; set; } = "UNIT";
+        public int InventoryTypeId { get; set; }
+        public decimal SkuQuantity { get; set; }
         public decimal Quantity { get; set; } = 1;
         public decimal Cost { get; set; }
         public decimal Total => Quantity * Cost;
@@ -659,7 +891,7 @@
         public int ItemCount { get; set; }
         public decimal TotalQuantity { get; set; }
         public decimal TotalValue { get; set; }
-        public string Status { get; set; } = "Draft";
+        public string Status { get; set; } = "Posted";
     }
 
     private enum GinStatus
