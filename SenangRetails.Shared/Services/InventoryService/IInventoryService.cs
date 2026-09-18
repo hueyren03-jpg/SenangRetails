@@ -39,9 +39,9 @@ namespace SenangRetails.Shared.Services.InventoryService
         Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentByBranchIdAsync(string? branchId = null);
         Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentDetailsAsync(string documentId);
         Task<ApiResponseRoot<string>?> AcceptStockInAsync(string documentId);
-        Task<bool> CreateStockTransfer(Doc_StockTransfer request);
+        Task<StockTransferSaveResult> CreateStockTransfer(Doc_StockTransfer request);
         Task<List<Doc_StockTransfer>?> GetAllStockTransferRecordAsync(DateTime startDate, DateTime endDate, int pageNumber, int pageSize);
-        Task<bool> UpdateStockTransfer(Doc_StockTransfer request);
+        Task<StockTransferSaveResult> UpdateStockTransfer(Doc_StockTransfer request);
         Task<Doc_StockTransfer?> GetStockTransferRecordAsync(string documentId);
         Task<ApiResponseRoot<string>?> DeleteStockTransferAsync(string documentId);
     }
