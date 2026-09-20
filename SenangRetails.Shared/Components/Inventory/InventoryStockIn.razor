@@ -20,8 +20,19 @@
             }
         </div>
         <div class="header-title">Stock In</div>
-        <div class="top-right-button"><i class="bi bi-truck"></i></div>
+        <div class="top-right-button">
+            <button type="button" class="stock-action-btn" @onclick="OpenStockInHistoryAsync">
+                <i class="bi bi-clock-history"></i> History
+            </button>
+        </div>
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(operationMessage))
+    {
+        <div class="alert @(operationSucceeded ? "alert-success" : "alert-danger")" style="margin: 10px 20px;">
+            @operationMessage
+        </div>
+    }
     
     <div class="stock-in-dropdown-card custom-shadow-sm">
         <span>
@@ -34,7 +45,6 @@
                 <div @onclick="CloseOrderMain" @onclick:stopPropagation="true" class="all-modal-backdrop-no-color"></div>
                 <div class="order-option-wrapper-summary">
                     <span @onclick='() => SelectAction("Adjustment")' @onclick:stopPropagation="true">Adjustment</span>
-                    <span @onclick='() => SelectAction("Internal Transfer In")' @onclick:stopPropagation="true">Internal Transfer In</span>
                     <span @onclick='() => SelectAction("Stock In")' @onclick:stopPropagation="true">Stock In</span>
                     <span @onclick='() => SelectAction("Recover")' @onclick:stopPropagation="true">Recover</span>
                 </div>
@@ -120,6 +130,103 @@
             </button>
         </div>
     }
+
+    @if (stockInHistoryIsOpen)
+    {
+        <div style="position: fixed; inset: 0; z-index: 5000; background: var(--color-background, #f8f9fa); overflow-y: auto;">
+            <div class="header">
+                <button type="button" class="header-back-btn" @onclick="CloseStockInHistory">
+                    <i class="bi bi-chevron-left"></i>
+                    <span>Back</span>
+                </button>
+                <div class="header-title">Stock In History</div>
+                <button type="button" class="stock-action-btn" @onclick="RefreshStockInHistoryAsync">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+
+            <div style="padding: 15px 20px;">
+                @if (isLoadingHistory)
+                {
+                    <div style="text-align:center; padding:40px;">
+                        <div class="spinner-border text-primary" role="status"></div>
+                    </div>
+                }
+                else if (selectedStockInRecord != null)
+                {
+                    var header = selectedStockInRecord.mobjDoc_Stock_GRN;
+                    <div class="summary-card-container custom-shadow-sm" style="margin-bottom:15px;">
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">GRN</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.DisplayCode) ? header.DocumentID : header.DisplayCode)</span>
+                        </div>
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">Date</span>
+                            <span class="summary-value">@header.FinancialDate.ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">Activity</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.StockActivityType) ? "Stock In" : header.StockActivityType)</span>
+                        </div>
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">Remarks</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.Remarks) ? "—" : header.Remarks)</span>
+                        </div>
+                    </div>
+
+                    <button type="button" class="confirm-btn secondary-btn" style="margin-bottom:15px;" @onclick="BackToStockInHistoryList">
+                        Back to History
+                    </button>
+
+                    <div class="stock-movement-table custom-shadow-sm">
+                        <div class="stock-movement-table-row border-bottom">
+                            <span>Product</span>
+                            <span class="text-align-center">Qty</span>
+                            <span class="text-align-right">Cost</span>
+                            <span class="text-align-right">Total</span>
+                        </div>
+                        @foreach (var line in selectedStockInRecord.lstDocumentLine ?? [])
+                        {
+                            <div class="stock-movement-table-row">
+                                <span>@(!string.IsNullOrWhiteSpace(line.Description) ? line.Description : line.ItemName)</span>
+                                <span class="text-align-center">@line.Quantity</span>
+                                <span class="text-align-right">@line.UnitPrice.ToString("N2")</span>
+                                <span class="text-align-right">@((line.Quantity * line.UnitPrice).ToString("N2"))</span>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (!stockInHistory.Any())
+                {
+                    <div style="text-align:center; padding:40px; color:#888;">
+                        <i class="bi bi-clock-history" style="font-size:2rem;"></i>
+                        <div>No stock in history found.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="stock-movement-table custom-shadow-sm">
+                        <div class="stock-movement-table-row border-bottom">
+                            <span>GRN</span>
+                            <span>Activity</span>
+                            <span class="text-align-center">Date</span>
+                            <span class="text-align-right">Total</span>
+                        </div>
+                        @foreach (var record in stockInHistory)
+                        {
+                            <div class="stock-movement-table-row cursor-pointer" @onclick="() => OpenStockInHistoryRecordAsync(record)">
+                                <span>@(string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode)</span>
+                                <span>@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock In" : record.StockActivityType)</span>
+                                <span class="text-align-center">@record.FinancialDate.ToString("dd/MM/yyyy")</span>
+                                <span class="text-align-right">@record.TotalAfterTax.ToString("N2")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
     <Calculator IsOpen="@isLocalCalculatorOpen"
                 Title="@calculatorType"
                 AllowDecimal="@(calculatorType == "Price")"
@@ -161,8 +268,14 @@
     private bool orderIsOpenMain = false;
     private bool isLoading = true;
     private string remarks = "";
-    private List<InventoryDM> allItemsList;
+    private List<InventoryDM> allItemsList = new();
     private bool IsSuccessCreating;
+    private bool stockInHistoryIsOpen;
+    private bool isLoadingHistory;
+    private List<Doc_Stock_GRNDM> stockInHistory = new();
+    private EBI.UC.Doc_Stock_GRN? selectedStockInRecord;
+    private string operationMessage = "";
+    private bool operationSucceeded;
 
     private StockInItemDisplay? editingItem;
     private string calculatorType = "";
@@ -358,43 +471,150 @@
         orderIsOpenMain = false;
     }
 
+
+    private string ResolveBranchId() =>
+        string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            ? AppState.CurrentBranch?.BranchID ?? ""
+            : AppState.SelectedBranchID;
+
+    private async Task OpenStockInHistoryAsync()
+    {
+        stockInHistoryIsOpen = true;
+        selectedStockInRecord = null;
+        await RefreshStockInHistoryAsync();
+    }
+
+    private void CloseStockInHistory()
+    {
+        stockInHistoryIsOpen = false;
+        selectedStockInRecord = null;
+    }
+
+    private void BackToStockInHistoryList()
+    {
+        selectedStockInRecord = null;
+    }
+
+    private async Task RefreshStockInHistoryAsync()
+    {
+        isLoadingHistory = true;
+        try
+        {
+            var branchId = ResolveBranchId();
+            if (string.IsNullOrWhiteSpace(branchId))
+            {
+                stockInHistory = new();
+                return;
+            }
+
+            stockInHistory = (await InventoryService.GetStockGRNRecordsAsync(
+                branchId,
+                DateTime.Today.AddYears(-1),
+                DateTime.Today.AddDays(1).AddTicks(-1),
+                1,
+                500) ?? new List<Doc_Stock_GRNDM>())
+                .Where(record => record != null && !record.IsVoid)
+                .OrderByDescending(record => record.FinancialDate)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[InventoryStockIn] Error loading GRN history: {ex.Message}");
+            operationSucceeded = false;
+            operationMessage = "Unable to load stock in history.";
+        }
+        finally
+        {
+            isLoadingHistory = false;
+        }
+    }
+
+    private async Task OpenStockInHistoryRecordAsync(Doc_Stock_GRNDM record)
+    {
+        if (string.IsNullOrWhiteSpace(record.DocumentID))
+            return;
+
+        isLoadingHistory = true;
+        try
+        {
+            selectedStockInRecord = await InventoryService.GetStockGRNRecordAsync(record.DocumentID);
+            if (selectedStockInRecord == null)
+            {
+                operationSucceeded = false;
+                operationMessage = "Unable to load this stock in record.";
+            }
+        }
+        finally
+        {
+            isLoadingHistory = false;
+        }
+    }
+
     private async Task ConfirmStockIn()
     {
-        // var activeItems = stockInItems.Where(i => i.StockInQuantity > 0).ToList();
-        // System.Text.StringBuilder sb = new();
-        // sb.AppendLine($"Confirmed Stock In ({selectedAction}) - Remarks: {remarks}");
-        // foreach (var item in activeItems)
-        // {
-        //     sb.AppendLine($"- {item.Name} (ID: {item.Id}): Qty: {item.StockInQuantity}, Cost: {item.StockInCost.ToString("N2")}");
-        // }
-        // Console.WriteLine(sb.ToString());
-        // System.Diagnostics.Debug.WriteLine(sb.ToString());
+        operationMessage = "";
+        operationSucceeded = false;
 
-        // if (OnConfirm.HasDelegate)
-        // {
-        //     await OnConfirm.InvokeAsync();
-        // }
-
-        var request = new EBI.UC.Doc_Stock_GRN();
-
-        request.mobjDoc_Stock_GRN.DocumentTypeID = 51; // Stock In
-        request.mobjDoc_Stock_GRN.BranchID = AppState.SelectedBranchID;
-        request.mobjDoc_Stock_GRN.FinancialDate = DateTime.Now;
-        request.mobjDoc_Stock_GRN.AccountName = "";
-        request.mobjDoc_Stock_GRN.Remarks = remarks;
-        request.mobjDoc_Stock_GRN.StockActivityType = "Purchase";
-
-        foreach (var item in stockInItems.Where(i => i.StockInQuantity > 0))
+        var activeItems = stockInItems.Where(i => i.StockInQuantity > 0).ToList();
+        if (!activeItems.Any())
         {
-            InventoryDM masterInventoryItem = allItemsList.FirstOrDefault(i => i.MasterAccountID == item.Id);
+            operationMessage = "Add at least one product before confirming stock in.";
+            return;
+        }
 
-            var lineItem = new EBI.DM.DocumentLineTableDM();
-            lineItem.Description = masterInventoryItem.AccountName;
-            lineItem.InventoryTypeID = masterInventoryItem.InventoryTypeID;
-            lineItem.InventoryItemAccountID = masterInventoryItem.MasterAccountID;
-            lineItem.LineItemID = masterInventoryItem.MasterAccountID;
-            lineItem.Quantity = item.StockInQuantity;
-            lineItem.UnitPrice = item.StockInCost;
+        var branchId = ResolveBranchId();
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            operationMessage = "A branch is required before confirming stock in.";
+            return;
+        }
+
+        var now = DateTime.Now;
+        var request = new EBI.UC.Doc_Stock_GRN();
+        var header = request.mobjDoc_Stock_GRN;
+        var total = activeItems.Sum(i => i.StockInQuantity * i.StockInCost);
+
+        header.DocumentTypeID = (int)EBI.Enum.EnumDocumentType.GRN;
+        header.BranchID = branchId;
+        header.EditBranchID = branchId;
+        header.FinancialDate = now;
+        header.PostingDate = now;
+        header.IsPostingDateDifferent = false;
+        header.Remarks = remarks;
+        header.StockActivityType = selectedAction;
+        header.GroupID = AppState.SelectedBranchGroupID;
+        header.TotalBeforeTax = total;
+        header.TotalAfterTax = total;
+        header.SaveAction = EBI.Enum.EntityState.Added;
+        header.IsDirty = true;
+
+        foreach (var item in activeItems)
+        {
+            var masterInventoryItem = allItemsList.FirstOrDefault(i => i.MasterAccountID == item.Id);
+            var lineTotal = item.StockInQuantity * item.StockInCost;
+
+            var lineItem = new DocumentLineTableDM
+            {
+                OwnerDocumentTypeID = (int)EBI.Enum.EnumDocumentType.GRN,
+                Description = masterInventoryItem?.AccountName ?? item.Name,
+                ItemName = masterInventoryItem?.AccountName ?? item.Name,
+                InventoryTypeID = masterInventoryItem?.InventoryTypeID ?? 1,
+                InventoryItemAccountID = masterInventoryItem?.MasterAccountID ?? item.Id,
+                LineItemID = masterInventoryItem?.MasterAccountID ?? item.Id,
+                Quantity = item.StockInQuantity,
+                UnitPrice = item.StockInCost,
+                Cost = item.StockInCost,
+                SubTotal = lineTotal,
+                SubTotalBeforeGST = lineTotal,
+                UnitOfMeasurementID = masterInventoryItem?.UnitOfMeasureID ?? "",
+                SKUQuantity = masterInventoryItem?.UOMBase is > 0 ? masterInventoryItem.UOMBase : 1,
+                BranchID = branchId,
+                EditBranchID = branchId,
+                GroupID = AppState.SelectedBranchGroupID,
+                FinancialDate = now,
+                SaveAction = EBI.Enum.EntityState.Added,
+                IsDirty = true
+            };
 
             request.lstDocumentLine.Add(lineItem);
         }
@@ -404,18 +624,26 @@
             var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             var requestJson = System.Text.Json.JsonSerializer.Serialize(request, jsonOptions);
             System.Diagnostics.Debug.WriteLine($"[ConfirmStockIn] GRN Stock In Request Body:\n{requestJson}");
-            Console.WriteLine($"[ConfirmStockIn] GRN Stock In Request Body:\n{requestJson}");
+
+            IsSuccessCreating = await InventoryService.CreateStockInGRN(request);
+            if (!IsSuccessCreating)
+            {
+                operationMessage = "Failed to create stock in record.";
+                return;
+            }
+
+            operationSucceeded = true;
+            operationMessage = "Stock in created successfully.";
+            stockInItems.Clear();
+            remarks = "";
+
+            if (OnConfirm.HasDelegate)
+                await OnConfirm.InvokeAsync();
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ConfirmStockIn] Error serializing GRN request: {ex.Message}");
-            Console.WriteLine($"[ConfirmStockIn] Error serializing GRN request: {ex.Message}");
-        }
-
-        IsSuccessCreating = await InventoryService.CreateStockInGRN(request);
-        if (IsSuccessCreating)
-        {
-            await OnConfirm.InvokeAsync();
+            System.Diagnostics.Debug.WriteLine($"[InventoryStockIn] Create GRN failed: {ex.Message}");
+            operationMessage = $"Failed to create stock in: {ex.Message}";
         }
     }
 }
