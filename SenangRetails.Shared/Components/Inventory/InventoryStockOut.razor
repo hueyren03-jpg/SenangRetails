@@ -157,23 +157,22 @@
                 }
                 else if (selectedStockOutRecord != null)
                 {
-                    var header = selectedStockOutRecord.mobjDoc_Stock_GIN;
                     <div class="summary-card-container custom-shadow-sm" style="margin-bottom:15px;">
                         <div class="side-by-side summary-line">
                             <span class="summary-text">GIN</span>
-                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.DisplayCode) ? header.DocumentID : header.DisplayCode)</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(selectedStockOutRecord.mobjDoc_Stock_GIN.DisplayCode) ? selectedStockOutRecord.mobjDoc_Stock_GIN.DocumentID : selectedStockOutRecord.mobjDoc_Stock_GIN.DisplayCode)</span>
                         </div>
                         <div class="side-by-side summary-line">
                             <span class="summary-text">Date</span>
-                            <span class="summary-value">@header.FinancialDate.ToString("dd/MM/yyyy HH:mm")</span>
+                            <span class="summary-value">@selectedStockOutRecord.mobjDoc_Stock_GIN.FinancialDate.ToString("dd/MM/yyyy HH:mm")</span>
                         </div>
                         <div class="side-by-side summary-line">
                             <span class="summary-text">Activity</span>
-                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.StockActivityType) ? "Stock Out" : header.StockActivityType)</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(selectedStockOutRecord.mobjDoc_Stock_GIN.StockActivityType) ? "Stock Out" : selectedStockOutRecord.mobjDoc_Stock_GIN.StockActivityType)</span>
                         </div>
                         <div class="side-by-side summary-line">
                             <span class="summary-text">Remarks</span>
-                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.Remarks) ? "—" : header.Remarks)</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(selectedStockOutRecord.mobjDoc_Stock_GIN.Remarks) ? "—" : selectedStockOutRecord.mobjDoc_Stock_GIN.Remarks)</span>
                         </div>
                     </div>
 
@@ -550,11 +549,11 @@
         header.DocumentTypeID = (int)EBI.Enum.EnumDocumentType.GIN;
         header.BranchID = branchId;
         header.EditBranchID = branchId;
-        header.FinancialDate = now;
+        selectedStockOutRecord.mobjDoc_Stock_GIN.FinancialDate = now;
         header.PostingDate = now;
         header.IsPostingDateDifferent = false;
-        header.Remarks = remarks;
-        header.StockActivityType = selectedAction;
+        selectedStockOutRecord.mobjDoc_Stock_GIN.Remarks = remarks;
+        selectedStockOutRecord.mobjDoc_Stock_GIN.StockActivityType = selectedAction;
         header.GroupID = AppState.SelectedBranchGroupID;
         header.TotalBeforeTax = total;
         header.TotalAfterTax = total;
