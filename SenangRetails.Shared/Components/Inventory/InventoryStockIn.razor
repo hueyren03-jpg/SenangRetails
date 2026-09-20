@@ -576,11 +576,11 @@
         header.DocumentTypeID = (int)EBI.Enum.EnumDocumentType.GRN;
         header.BranchID = branchId;
         header.EditBranchID = branchId;
-        selectedStockInRecord.mobjDoc_Stock_GRN.FinancialDate = now;
+        header.FinancialDate = now;
         header.PostingDate = now;
         header.IsPostingDateDifferent = false;
-        selectedStockInRecord.mobjDoc_Stock_GRN.Remarks = remarks;
-        selectedStockInRecord.mobjDoc_Stock_GRN.StockActivityType = selectedAction;
+        header.Remarks = remarks;
+        header.StockActivityType = selectedAction;
         header.GroupID = AppState.SelectedBranchGroupID;
         header.TotalBeforeTax = total;
         header.TotalAfterTax = total;
