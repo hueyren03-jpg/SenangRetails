@@ -1009,16 +1009,13 @@
             };
             stockTransferHistory.Insert(0, newEntry);
             
-            notificationMessage = saveResult.GinSaved
-                ? (isEditing
-                    ? "Stock transfer and related GIN updated successfully."
-                    : "Stock transfer and GIN created successfully.")
+            notificationMessage = string.IsNullOrWhiteSpace(saveResult.Message)
+                ? (isEditing ? "Stock transfer updated successfully." : "Stock transfer created successfully.")
                 : saveResult.Message;
-            notificationType = saveResult.GinSaved ? "success" : "warning";
+            notificationType = "success";
             isNotificationVisible = true;
 
-            // The transfer itself is already saved even if GIN synchronization failed.
-            // Clear the editor so the user does not accidentally create a duplicate transfer by retrying.
+            // Stock Transfer is its own document flow. GIN belongs to Stock Out and GRN belongs to Stock In.
             stockInItems.Clear();
             remarks = "";
             isEditing = false;
