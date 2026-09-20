@@ -21,8 +21,8 @@
         </div>
         <div class="header-title">Stock Out</div>
         <div class="top-right-button">
-            <button type="button" class="stock-action-btn" @onclick="OpenStockOutHistoryAsync">
-                <i class="bi bi-clock-history"></i> History
+            <button type="button" class="stock-action-btn" title="History" @onclick="OpenStockOutHistoryAsync">
+                <i class="bi bi-clock-history"></i>
             </button>
         </div>
     </div>
@@ -136,8 +136,8 @@
 
     @if (stockOutHistoryIsOpen)
     {
-        <div style="position: fixed; inset: 0; z-index: 5000; background: var(--color-background, #f8f9fa); overflow-y: auto;">
-            <div class="header">
+        <div class="stock-history-overlay">
+            <div class="header stock-history-header">
                 <button type="button" class="header-back-btn" @onclick="CloseStockOutHistory">
                     <i class="bi bi-chevron-left"></i>
                     <span>Back</span>
@@ -148,7 +148,7 @@
                 </button>
             </div>
 
-            <div style="padding: 15px 20px;">
+            <div class="stock-history-content">
                 @if (isLoadingHistory)
                 {
                     <div style="text-align:center; padding:40px;">
@@ -176,12 +176,12 @@
                         </div>
                     </div>
 
-                    <button type="button" class="confirm-btn secondary-btn" style="margin-bottom:15px;" @onclick="BackToStockOutHistoryList">
+                    <button type="button" class="history-back-list-btn" @onclick="BackToStockOutHistoryList">
                         Back to History
                     </button>
 
                     <div class="stock-movement-table custom-shadow-sm">
-                        <div class="stock-movement-table-row border-bottom">
+                        <div class="history-table-row border-bottom">
                             <span>Product</span>
                             <span class="text-align-center">Qty</span>
                             <span class="text-align-right">Cost</span>
@@ -189,7 +189,7 @@
                         </div>
                         @foreach (var line in selectedStockOutRecord.lstDocumentLine ?? [])
                         {
-                            <div class="stock-movement-table-row">
+                            <div class="history-table-row">
                                 <span>@(!string.IsNullOrWhiteSpace(line.Description) ? line.Description : line.ItemName)</span>
                                 <span class="text-align-center">@line.Quantity</span>
                                 <span class="text-align-right">@line.UnitPrice.ToString("N2")</span>
@@ -208,7 +208,7 @@
                 else
                 {
                     <div class="stock-movement-table custom-shadow-sm">
-                        <div class="stock-movement-table-row border-bottom">
+                        <div class="history-table-row border-bottom">
                             <span>GIN</span>
                             <span>Activity</span>
                             <span class="text-align-center">Date</span>
@@ -216,7 +216,7 @@
                         </div>
                         @foreach (var record in stockOutHistory)
                         {
-                            <div class="stock-movement-table-row cursor-pointer" @onclick="() => OpenStockOutHistoryRecordAsync(record)">
+                            <div class="history-table-row cursor-pointer" @onclick="() => OpenStockOutHistoryRecordAsync(record)">
                                 <span>@(string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode)</span>
                                 <span>@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock Out" : record.StockActivityType)</span>
                                 <span class="text-align-center">@record.FinancialDate.ToString("dd/MM/yyyy")</span>
