@@ -20,8 +20,19 @@
             }
         </div>
         <div class="header-title">Stock Out</div>
-        <div class="top-right-button"><i class="bi bi-truck"></i></div>
+        <div class="top-right-button">
+            <button type="button" class="stock-action-btn" @onclick="OpenStockOutHistoryAsync">
+                <i class="bi bi-clock-history"></i> History
+            </button>
+        </div>
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(operationMessage))
+    {
+        <div class="alert @(operationSucceeded ? "alert-success" : "alert-danger")" style="margin: 10px 20px;">
+            @operationMessage
+        </div>
+    }
     
     <div class="stock-in-dropdown-card custom-shadow-sm">
         <span>
@@ -39,7 +50,6 @@
                     <span @onclick='() => SelectAction("Shop Used")' @onclick:stopPropagation="true">Shop Used</span>
                     <span @onclick='() => SelectAction("Gift / Present")' @onclick:stopPropagation="true">Gift / Present</span>
                     <span @onclick='() => SelectAction("Adjustment")' @onclick:stopPropagation="true">Adjustment</span>
-                    <span @onclick='() => SelectAction("Internal Transferred Out")' @onclick:stopPropagation="true">Internal Transferred Out</span>
                 </div>
             }
         </div>
@@ -123,6 +133,103 @@
             </button>
         </div>
     }
+
+    @if (stockOutHistoryIsOpen)
+    {
+        <div style="position: fixed; inset: 0; z-index: 5000; background: var(--color-background, #f8f9fa); overflow-y: auto;">
+            <div class="header">
+                <button type="button" class="header-back-btn" @onclick="CloseStockOutHistory">
+                    <i class="bi bi-chevron-left"></i>
+                    <span>Back</span>
+                </button>
+                <div class="header-title">Stock Out History</div>
+                <button type="button" class="stock-action-btn" @onclick="RefreshStockOutHistoryAsync">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+
+            <div style="padding: 15px 20px;">
+                @if (isLoadingHistory)
+                {
+                    <div style="text-align:center; padding:40px;">
+                        <div class="spinner-border text-primary" role="status"></div>
+                    </div>
+                }
+                else if (selectedStockOutRecord != null)
+                {
+                    var header = selectedStockOutRecord.mobjDoc_Stock_GIN;
+                    <div class="summary-card-container custom-shadow-sm" style="margin-bottom:15px;">
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">GIN</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.DisplayCode) ? header.DocumentID : header.DisplayCode)</span>
+                        </div>
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">Date</span>
+                            <span class="summary-value">@header.FinancialDate.ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">Activity</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.StockActivityType) ? "Stock Out" : header.StockActivityType)</span>
+                        </div>
+                        <div class="side-by-side summary-line">
+                            <span class="summary-text">Remarks</span>
+                            <span class="summary-value">@(string.IsNullOrWhiteSpace(header.Remarks) ? "—" : header.Remarks)</span>
+                        </div>
+                    </div>
+
+                    <button type="button" class="confirm-btn secondary-btn" style="margin-bottom:15px;" @onclick="BackToStockOutHistoryList">
+                        Back to History
+                    </button>
+
+                    <div class="stock-movement-table custom-shadow-sm">
+                        <div class="stock-movement-table-row border-bottom">
+                            <span>Product</span>
+                            <span class="text-align-center">Qty</span>
+                            <span class="text-align-right">Cost</span>
+                            <span class="text-align-right">Total</span>
+                        </div>
+                        @foreach (var line in selectedStockOutRecord.lstDocumentLine ?? [])
+                        {
+                            <div class="stock-movement-table-row">
+                                <span>@(!string.IsNullOrWhiteSpace(line.Description) ? line.Description : line.ItemName)</span>
+                                <span class="text-align-center">@line.Quantity</span>
+                                <span class="text-align-right">@line.UnitPrice.ToString("N2")</span>
+                                <span class="text-align-right">@((line.Quantity * line.UnitPrice).ToString("N2"))</span>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (!stockOutHistory.Any())
+                {
+                    <div style="text-align:center; padding:40px; color:#888;">
+                        <i class="bi bi-clock-history" style="font-size:2rem;"></i>
+                        <div>No stock out history found.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="stock-movement-table custom-shadow-sm">
+                        <div class="stock-movement-table-row border-bottom">
+                            <span>GIN</span>
+                            <span>Activity</span>
+                            <span class="text-align-center">Date</span>
+                            <span class="text-align-right">Total</span>
+                        </div>
+                        @foreach (var record in stockOutHistory)
+                        {
+                            <div class="stock-movement-table-row cursor-pointer" @onclick="() => OpenStockOutHistoryRecordAsync(record)">
+                                <span>@(string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode)</span>
+                                <span>@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock Out" : record.StockActivityType)</span>
+                                <span class="text-align-center">@record.FinancialDate.ToString("dd/MM/yyyy")</span>
+                                <span class="text-align-right">@record.TotalAfterTax.ToString("N2")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
     <Calculator IsOpen="@isLocalCalculatorOpen"
                 Title="@calculatorType"
                 AllowDecimal="@(calculatorType == "Price")"
@@ -163,6 +270,13 @@
     private bool orderIsOpenOut = false;
     private bool isLoading = true;
     private string remarks = "";
+    private List<InventoryDM> allItemsList = new();
+    private bool stockOutHistoryIsOpen;
+    private bool isLoadingHistory;
+    private List<Doc_Stock_GRNDM> stockOutHistory = new();
+    private GinDocumentDto? selectedStockOutRecord;
+    private string operationMessage = "";
+    private bool operationSucceeded;
 
     private StockOutItemDisplay? editingItem;
     private string calculatorType = "";
@@ -216,7 +330,7 @@
             var branchId = AppState.SelectedBranchID;
 
             // Load master items
-            var allItemsList = await InventoryService.LoadItemsAsync(branchId) ?? new List<InventoryDM>();
+            allItemsList = await InventoryService.LoadItemsAsync(branchId) ?? new List<InventoryDM>();
             var productItems = allItemsList.Where(i => i.InventoryTypeID == 1).ToList();
 
             if (productItems.Any())
@@ -323,18 +437,189 @@
         await OnOpenAddProduct.InvokeAsync();
     }
 
+
+    private string ResolveBranchId() =>
+        string.IsNullOrWhiteSpace(AppState.SelectedBranchID)
+            ? AppState.CurrentBranch?.BranchID ?? ""
+            : AppState.SelectedBranchID;
+
+    private async Task OpenStockOutHistoryAsync()
+    {
+        stockOutHistoryIsOpen = true;
+        selectedStockOutRecord = null;
+        await RefreshStockOutHistoryAsync();
+    }
+
+    private void CloseStockOutHistory()
+    {
+        stockOutHistoryIsOpen = false;
+        selectedStockOutRecord = null;
+    }
+
+    private void BackToStockOutHistoryList()
+    {
+        selectedStockOutRecord = null;
+    }
+
+    private async Task RefreshStockOutHistoryAsync()
+    {
+        isLoadingHistory = true;
+        try
+        {
+            var branchId = ResolveBranchId();
+            if (string.IsNullOrWhiteSpace(branchId))
+            {
+                stockOutHistory = new();
+                return;
+            }
+
+            stockOutHistory = (await InventoryService.GetStockGINRecordsAsync(
+                branchId,
+                DateTime.Today.AddYears(-1),
+                DateTime.Today.AddDays(1).AddTicks(-1),
+                1,
+                500) ?? new List<Doc_Stock_GRNDM>())
+                .Where(record => record != null && !record.IsVoid)
+                .OrderByDescending(record => record.FinancialDate)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[InventoryStockOut] Error loading GIN history: {ex.Message}");
+            operationSucceeded = false;
+            operationMessage = "Unable to load stock out history.";
+        }
+        finally
+        {
+            isLoadingHistory = false;
+        }
+    }
+
+    private async Task OpenStockOutHistoryRecordAsync(Doc_Stock_GRNDM record)
+    {
+        if (string.IsNullOrWhiteSpace(record.DocumentID))
+            return;
+
+        isLoadingHistory = true;
+        try
+        {
+            selectedStockOutRecord = await InventoryService.GetStockGINRecordAsync(record.DocumentID);
+            if (selectedStockOutRecord == null)
+            {
+                operationSucceeded = false;
+                operationMessage = "Unable to load this stock out record.";
+            }
+        }
+        finally
+        {
+            isLoadingHistory = false;
+        }
+    }
+
     private async Task ConfirmStockOut()
     {
+        operationMessage = "";
+        operationSucceeded = false;
+
         var activeItems = stockOutItems.Where(i => i.StockOutQuantity > 0).ToList();
-        System.Text.StringBuilder sb = new();
-        sb.AppendLine($"Confirmed Stock Out ({selectedAction}) - Remarks: {remarks}");
+        if (!activeItems.Any())
+        {
+            operationMessage = "Add at least one product before confirming stock out.";
+            return;
+        }
+
+        var insufficient = activeItems.FirstOrDefault(i => i.StockOutQuantity > i.CurrentStock);
+        if (insufficient != null)
+        {
+            operationMessage = $"Not enough stock for {insufficient.Name}. Available: {insufficient.CurrentStock:N0}.";
+            return;
+        }
+
+        var branchId = ResolveBranchId();
+        if (string.IsNullOrWhiteSpace(branchId))
+        {
+            operationMessage = "A branch is required before confirming stock out.";
+            return;
+        }
+
+        var now = DateTime.Now;
+        var request = new GinDocumentDto();
+        var header = request.mobjDoc_Stock_GIN;
+        var total = activeItems.Sum(i => (decimal)i.StockOutQuantity * i.StockOutCost);
+
+        header.DocumentTypeID = (int)EBI.Enum.EnumDocumentType.GIN;
+        header.BranchID = branchId;
+        header.EditBranchID = branchId;
+        header.FinancialDate = now;
+        header.PostingDate = now;
+        header.IsPostingDateDifferent = false;
+        header.Remarks = remarks;
+        header.StockActivityType = selectedAction;
+        header.GroupID = AppState.SelectedBranchGroupID;
+        header.TotalBeforeTax = total;
+        header.TotalAfterTax = total;
+        header.SaveAction = EBI.Enum.EntityState.Added;
+        header.IsDirty = true;
+
         foreach (var item in activeItems)
         {
-            sb.AppendLine($"- {item.Name} (ID: {item.Id}): Qty: {item.StockOutQuantity}, Cost: {item.StockOutCost.ToString("N2")}");
+            var masterInventoryItem = allItemsList.FirstOrDefault(i => i.MasterAccountID == item.Id);
+            var lineTotal = (decimal)item.StockOutQuantity * item.StockOutCost;
+
+            var lineItem = new DocumentLineTableDM
+            {
+                OwnerDocumentTypeID = (int)EBI.Enum.EnumDocumentType.GIN,
+                Description = masterInventoryItem?.AccountName ?? item.Name,
+                ItemName = masterInventoryItem?.AccountName ?? item.Name,
+                InventoryTypeID = masterInventoryItem?.InventoryTypeID ?? 1,
+                InventoryItemAccountID = masterInventoryItem?.MasterAccountID ?? item.Id,
+                LineItemID = masterInventoryItem?.MasterAccountID ?? item.Id,
+                Quantity = item.StockOutQuantity,
+                UnitPrice = item.StockOutCost,
+                Cost = item.StockOutCost,
+                SubTotal = lineTotal,
+                SubTotalBeforeGST = lineTotal,
+                UnitOfMeasurementID = masterInventoryItem?.UnitOfMeasureID ?? "",
+                SKUQuantity = masterInventoryItem?.UOMBase is > 0 ? masterInventoryItem.UOMBase : 1,
+                BranchID = branchId,
+                EditBranchID = branchId,
+                GroupID = AppState.SelectedBranchGroupID,
+                FinancialDate = now,
+                SaveAction = EBI.Enum.EntityState.Added,
+                IsDirty = true
+            };
+
+            request.lstDocumentLine.Add(lineItem);
         }
-        Console.WriteLine(sb.ToString());
-        System.Diagnostics.Debug.WriteLine(sb.ToString());
-        await OnConfirm.InvokeAsync();
+
+        try
+        {
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            var requestJson = System.Text.Json.JsonSerializer.Serialize(request, jsonOptions);
+            System.Diagnostics.Debug.WriteLine($"[ConfirmStockOut] GIN Stock Out Request Body:\n{requestJson}");
+
+            var result = await InventoryService.CreateStockGINAsync(request);
+            if (!result.Success)
+            {
+                operationMessage = string.IsNullOrWhiteSpace(result.Message)
+                    ? "Failed to create stock out record."
+                    : result.Message;
+                return;
+            }
+
+            operationSucceeded = true;
+            operationMessage = "Stock out created successfully.";
+            stockOutItems.Clear();
+            remarks = "";
+
+            if (OnConfirm.HasDelegate)
+                await OnConfirm.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[InventoryStockOut] Create GIN failed: {ex.Message}");
+            operationMessage = $"Failed to create stock out: {ex.Message}";
+        }
     }
 
     private void OpenCalculator(StockOutItemDisplay item, string type)
