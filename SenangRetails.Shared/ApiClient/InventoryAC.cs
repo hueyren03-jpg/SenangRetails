@@ -579,25 +579,52 @@ namespace SenangRetails.Shared.ApiClient
                     "api/Inventory/GetStockBalanceByBranchAndByItem", request);
         }
 
-        public async Task<ApiResponseRoot<string>> DocStockGRNCreateRecord(EBI.UC.Doc_Stock_GRN request)
+        public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGRNCreateRecord(EBI.UC.Doc_Stock_GRN request)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<EBI.UC.Doc_Stock_GRN, ApiResponseRoot<string>>(
+            return await PostAsync<EBI.UC.Doc_Stock_GRN, ApiResponseRoot<StockDocumentApiResult>>(
                     "api/Doc_Stock_GRN/CreateRecord", request);
         }
 
-        // Goods Issue Note (GIN) API — mirrors the GRN integration pattern.
-        public async Task<ApiResponseRoot<string>?> DocStockGINCreateRecord(GinDocumentDto request)
+        public async Task<ApiResponseRoot<EBI.UC.Doc_Stock_GRN>?> DocStockGRNLoadRecord(string documentId)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<GinDocumentDto, ApiResponseRoot<string>>(
+            return await PostAsync<object, ApiResponseRoot<EBI.UC.Doc_Stock_GRN>>(
+                "api/Doc_Stock_GRN/LoadRecord", new { id = documentId });
+        }
+
+        public async Task<ApiResponseRoot<List<Doc_Stock_GRNDM>>?> DocStockGRNLoadProxy(
+            string branchId,
+            DateTime startDate,
+            DateTime endDate,
+            int pageNumber,
+            int pageSize)
+        {
+            if (!await SetBearerToken()) return null;
+            return await PostAsync<object, ApiResponseRoot<List<Doc_Stock_GRNDM>>>(
+                "api/Doc_Stock_GRN/LoadProxy",
+                new
+                {
+                    branchID = branchId,
+                    startDate,
+                    endDate,
+                    pageNumber,
+                    pageSize
+                });
+        }
+
+        // Goods Issue Note (GIN) API — mirrors the GRN integration pattern.
+        public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGINCreateRecord(GinDocumentDto request)
+        {
+            if (!await SetBearerToken()) return null;
+            return await PostAsync<GinDocumentDto, ApiResponseRoot<StockDocumentApiResult>>(
                 "api/Doc_Stock_GIN/CreateRecord", request);
         }
 
-        public async Task<ApiResponseRoot<string>?> DocStockGINUpdateRecord(GinDocumentDto request)
+        public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGINUpdateRecord(GinDocumentDto request)
         {
             if (!await SetBearerToken()) return null;
-            return await PutAsync<GinDocumentDto, ApiResponseRoot<string>>(
+            return await PutAsync<GinDocumentDto, ApiResponseRoot<StockDocumentApiResult>>(
                 "api/Doc_Stock_GIN/UpdateRecord", request);
         }
 
