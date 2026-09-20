@@ -497,3 +497,147 @@ MODALS DEEP SCYLED (SlideModal & Calculator children)
     font-size: 20px;
     color: #333;
 }
+
+
+/* ============================================================
+   STOCK DOCUMENT HISTORY
+   ============================================================ */
+
+.stock-action-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--primary-darker, #7d3345);
+    transition: background-color 0.15s ease;
+}
+
+.stock-action-btn:hover {
+    background: #F7EDEF;
+}
+
+.stock-action-btn i {
+    font-size: 20px;
+    color: inherit;
+}
+
+.stock-history-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-background, #f8f9fa);
+    overflow: hidden;
+}
+
+.stock-history-header {
+    flex: 0 0 auto;
+    padding: 14px 18px;
+    background: white;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.header-back-btn {
+    min-height: 36px;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--primary-darker, #7d3345);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.header-back-btn:hover {
+    background: #F7EDEF;
+}
+
+.stock-history-content {
+    flex: 1;
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.history-table-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.6fr) minmax(130px, 1.2fr) minmax(115px, 1fr) minmax(100px, 0.8fr);
+    gap: 14px;
+    align-items: center;
+    min-width: 620px;
+    padding: 13px 16px;
+    border-bottom: 1px solid #EEEEEE;
+    font-size: 0.95em;
+    transition: background-color 0.15s ease;
+}
+
+.history-table-row.border-bottom {
+    background: #F8F9FA;
+    color: #666;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: default;
+}
+
+.history-table-row:not(.border-bottom):hover {
+    background: #F8F9FA;
+}
+
+.history-back-list-btn {
+    margin-bottom: 15px;
+    padding: 9px 14px;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 8px;
+    background: white;
+    color: #333;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.history-back-list-btn:hover {
+    background: #F8F9FA;
+}
+
+@media (max-width: 600px) {
+    .stock-history-header {
+        padding: 10px 12px;
+    }
+
+    .stock-history-content {
+        padding: 12px;
+    }
+
+    .header-back-btn span {
+        display: none;
+    }
+
+    .header-back-btn {
+        width: 36px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .history-table-row {
+        min-width: 560px;
+        grid-template-columns: minmax(160px, 1.5fr) minmax(120px, 1fr) 110px 90px;
+        padding: 11px 12px;
+        gap: 10px;
+    }
+}
