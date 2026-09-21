@@ -309,6 +309,35 @@
     private bool isLoadingHistory;
     private List<Doc_Stock_GRNDM> stockInHistory = new();
     private EBI.UC.Doc_Stock_GRN? selectedStockInRecord;
+    private DateTime _historyStartDate = DateTime.Today.AddDays(-30);
+    private DateTime historyStartDate
+    {
+        get => _historyStartDate;
+        set
+        {
+            if (_historyStartDate.Date == value.Date)
+                return;
+
+            _historyStartDate = value.Date;
+            if (stockInHistoryIsOpen)
+                _ = RefreshStockInHistoryAsync();
+        }
+    }
+
+    private DateTime _historyEndDate = DateTime.Today.AddDays(1);
+    private DateTime historyEndDate
+    {
+        get => _historyEndDate;
+        set
+        {
+            if (_historyEndDate.Date == value.Date)
+                return;
+
+            _historyEndDate = value.Date;
+            if (stockInHistoryIsOpen)
+                _ = RefreshStockInHistoryAsync();
+        }
+    }
     private string operationMessage = "";
     private bool operationSucceeded;
 
@@ -542,10 +571,16 @@
                 return;
             }
 
+            if (historyStartDate.Date > historyEndDate.Date)
+            {
+                stockInHistory = new();
+                return;
+            }
+
             stockInHistory = (await InventoryService.GetStockGRNRecordsAsync(
                 branchId,
-                DateTime.Today.AddYears(-1),
-                DateTime.Today.AddDays(1).AddTicks(-1),
+                historyStartDate.Date,
+                historyEndDate.Date.AddDays(1).AddTicks(-1),
                 1,
                 500) ?? new List<Doc_Stock_GRNDM>())
                 .Where(record => record != null && !record.IsVoid)
