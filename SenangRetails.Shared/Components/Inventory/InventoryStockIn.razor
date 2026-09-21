@@ -131,100 +131,136 @@
         </div>
     }
 
-    @if (stockInHistoryIsOpen)
-    {
-        <div class="stock-history-overlay">
-            <div class="header stock-history-header">
-                <button type="button" class="header-back-btn" @onclick="CloseStockInHistory">
-                    <i class="bi bi-chevron-left"></i>
-                    <span>Back</span>
-                </button>
-                <div class="header-title">Stock In History</div>
-                <button type="button" class="stock-action-btn" @onclick="RefreshStockInHistoryAsync">
-                    <i class="bi bi-arrow-clockwise"></i>
-                </button>
-            </div>
-
-            <div class="stock-history-content">
-                @if (isLoadingHistory)
-                {
-                    <div style="text-align:center; padding:40px;">
-                        <div class="spinner-border text-primary" role="status"></div>
-                    </div>
-                }
-                else if (selectedStockInRecord != null)
-                {
-                    <div class="summary-card-container custom-shadow-sm" style="margin-bottom:15px;">
-                        <div class="side-by-side summary-line">
-                            <span class="summary-text">GRN</span>
-                            <span class="summary-value">@(string.IsNullOrWhiteSpace(selectedStockInRecord.mobjDoc_Stock_GRN.DisplayCode) ? selectedStockInRecord.mobjDoc_Stock_GRN.DocumentID : selectedStockInRecord.mobjDoc_Stock_GRN.DisplayCode)</span>
-                        </div>
-                        <div class="side-by-side summary-line">
-                            <span class="summary-text">Date</span>
-                            <span class="summary-value">@selectedStockInRecord.mobjDoc_Stock_GRN.FinancialDate.ToString("dd/MM/yyyy HH:mm")</span>
-                        </div>
-                        <div class="side-by-side summary-line">
-                            <span class="summary-text">Activity</span>
-                            <span class="summary-value">@(string.IsNullOrWhiteSpace(selectedStockInRecord.mobjDoc_Stock_GRN.StockActivityType) ? "Stock In" : selectedStockInRecord.mobjDoc_Stock_GRN.StockActivityType)</span>
-                        </div>
-                        <div class="side-by-side summary-line">
-                            <span class="summary-text">Remarks</span>
-                            <span class="summary-value">@(string.IsNullOrWhiteSpace(selectedStockInRecord.mobjDoc_Stock_GRN.Remarks) ? "—" : selectedStockInRecord.mobjDoc_Stock_GRN.Remarks)</span>
-                        </div>
-                    </div>
-
-                    <button type="button" class="history-back-list-btn" @onclick="BackToStockInHistoryList">
-                        Back to History
-                    </button>
-
-                    <div class="stock-movement-table custom-shadow-sm">
-                        <div class="history-table-row border-bottom">
-                            <span>Product</span>
-                            <span class="text-align-center">Qty</span>
-                            <span class="text-align-right">Cost</span>
-                            <span class="text-align-right">Total</span>
-                        </div>
-                        @foreach (var line in selectedStockInRecord.lstDocumentLine ?? [])
-                        {
-                            <div class="history-table-row">
-                                <span>@(!string.IsNullOrWhiteSpace(line.Description) ? line.Description : line.ItemName)</span>
-                                <span class="text-align-center">@line.Quantity</span>
-                                <span class="text-align-right">@line.UnitPrice.ToString("N2")</span>
-                                <span class="text-align-right">@((line.Quantity * line.UnitPrice).ToString("N2"))</span>
-                            </div>
-                        }
-                    </div>
-                }
-                else if (!stockInHistory.Any())
-                {
-                    <div style="text-align:center; padding:40px; color:#888;">
-                        <i class="bi bi-clock-history" style="font-size:2rem;"></i>
-                        <div>No stock in history found.</div>
-                    </div>
-                }
-                else
-                {
-                    <div class="stock-movement-table custom-shadow-sm">
-                        <div class="history-table-row border-bottom">
-                            <span>GRN</span>
-                            <span>Activity</span>
-                            <span class="text-align-center">Date</span>
-                            <span class="text-align-right">Total</span>
-                        </div>
-                        @foreach (var record in stockInHistory)
-                        {
-                            <div class="history-table-row cursor-pointer" @onclick="() => OpenStockInHistoryRecordAsync(record)">
-                                <span>@(string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode)</span>
-                                <span>@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock In" : record.StockActivityType)</span>
-                                <span class="text-align-center">@record.FinancialDate.ToString("dd/MM/yyyy")</span>
-                                <span class="text-align-right">@record.TotalAfterTax.ToString("N2")</span>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
+    <SlideModal IsOpen="@stockInHistoryIsOpen"
+                CssClass="stock-document-history-modal"
+                ZIndexBackdrop="5000"
+                ZIndexModal="5001"
+                OnClose="CloseStockInHistory">
+        <div class="history-modal-header">
+            <button type="button" class="history-icon-btn" @onclick="CloseStockInHistory" title="Close history" aria-label="Close history">
+                <i class="bi bi-x-lg"></i>
+            </button>
+            <div class="history-modal-title">Stock In History</div>
+            <button type="button" class="history-icon-btn" @onclick="RefreshStockInHistoryAsync" title="Refresh history" aria-label="Refresh history">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
         </div>
-    }
+
+        @if (selectedStockInRecord == null)
+        {
+            <div class="date-filter-row">
+                <div>
+                    <label>Start Date</label>
+                    <MobileDatePicker @bind-Value="historyStartDate" DateFormat="dd/MM/yyyy" />
+                </div>
+                <div>
+                    <label>End Date</label>
+                    <MobileDatePicker @bind-Value="historyEndDate" DateFormat="dd/MM/yyyy" />
+                </div>
+            </div>
+        }
+
+        <div class="history-modal-content">
+            @if (isLoadingHistory)
+            {
+                <div class="history-loading-state">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <span>Loading history...</span>
+                </div>
+            }
+            else if (selectedStockInRecord != null)
+            {
+                <button type="button" class="history-back-list-btn" @onclick="BackToStockInHistoryList">
+                    <i class="bi bi-chevron-left"></i>
+                    Back to History
+                </button>
+
+                <div class="history-detail-card">
+                    <div class="history-detail-row">
+                        <span>GRN</span>
+                        <strong>@(string.IsNullOrWhiteSpace(selectedStockInRecord.mobjDoc_Stock_GRN.DisplayCode) ? selectedStockInRecord.mobjDoc_Stock_GRN.DocumentID : selectedStockInRecord.mobjDoc_Stock_GRN.DisplayCode)</strong>
+                    </div>
+                    <div class="history-detail-row">
+                        <span>Date</span>
+                        <strong>@selectedStockInRecord.mobjDoc_Stock_GRN.FinancialDate.ToString("dd/MM/yyyy hh:mm tt")</strong>
+                    </div>
+                    <div class="history-detail-row">
+                        <span>Activity</span>
+                        <strong>@(string.IsNullOrWhiteSpace(selectedStockInRecord.mobjDoc_Stock_GRN.StockActivityType) ? "Stock In" : selectedStockInRecord.mobjDoc_Stock_GRN.StockActivityType)</strong>
+                    </div>
+                    <div class="history-detail-row">
+                        <span>Remarks</span>
+                        <strong>@(string.IsNullOrWhiteSpace(selectedStockInRecord.mobjDoc_Stock_GRN.Remarks) ? "—" : selectedStockInRecord.mobjDoc_Stock_GRN.Remarks)</strong>
+                    </div>
+                </div>
+
+                <div class="history-products-card">
+                    <div class="history-products-label">Products</div>
+                    @if (selectedStockInRecord.lstDocumentLine == null || !selectedStockInRecord.lstDocumentLine.Any())
+                    {
+                        <div class="history-empty-products">No product details found.</div>
+                    }
+                    else
+                    {
+                        @foreach (var line in selectedStockInRecord.lstDocumentLine)
+                        {
+                            <div class="history-product-row">
+                                <div>
+                                    <strong>@(!string.IsNullOrWhiteSpace(line.Description) ? line.Description : line.ItemName)</strong>
+                                    <span>Qty: @line.Quantity</span>
+                                </div>
+                                <div class="history-product-value">
+                                    <span>RM @line.UnitPrice.ToString("N2")</span>
+                                    <strong>RM @((line.Quantity * line.UnitPrice).ToString("N2"))</strong>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="history-detail-total">
+                    <span>Total</span>
+                    <strong>RM @selectedStockInRecord.mobjDoc_Stock_GRN.TotalAfterTax.ToString("N2")</strong>
+                </div>
+            }
+            else if (!stockInHistory.Any())
+            {
+                <div class="history-empty-state">
+                    <i class="bi bi-clock-history"></i>
+                    <span>No stock in history found.</span>
+                </div>
+            }
+            else
+            {
+                @foreach (var record in stockInHistory)
+                {
+                    <div class="history-entry-card custom-shadow-sm" @onclick="() => OpenStockInHistoryRecordAsync(record)">
+                        <div class="history-entry-top">
+                            <div class="history-entry-heading">
+                                <span class="history-doc-number">@(string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode)</span>
+                                <span class="history-date">@record.FinancialDate.ToString("dd/MM/yyyy hh:mm tt")</span>
+                            </div>
+                            <span class="history-badge">@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock In" : record.StockActivityType)</span>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(record.Remarks))
+                        {
+                            <div class="history-remarks">@record.Remarks</div>
+                        }
+
+                        <div class="history-entry-footer">
+                            <span>View details</span>
+                            <strong>Total: RM @record.TotalAfterTax.ToString("N2")</strong>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <button type="button" class="confirm-btn w-100 history-close-btn" @onclick="CloseStockInHistory">
+            Close History
+        </button>
+    </SlideModal>
 
     <Calculator IsOpen="@isLocalCalculatorOpen"
                 Title="@calculatorType"
