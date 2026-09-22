@@ -6,6 +6,7 @@
 @inject IInventoryService InventoryService
 @inject AppState AppState
 @inject LocalImageCacheService LocalImageCache
+@inject IJSRuntime JS
 
 <div class="view-body">
     <div class="header">
@@ -160,6 +161,13 @@
             </div>
         }
 
+        @if (!string.IsNullOrWhiteSpace(historyMessage))
+        {
+            <div class="alert @(historyOperationSucceeded ? "alert-success" : "alert-danger") history-operation-message">
+                @historyMessage
+            </div>
+        }
+
         <div class="history-modal-content">
             @if (isLoadingHistory)
             {
@@ -240,7 +248,21 @@
                                 <span class="history-doc-number">@(string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode)</span>
                                 <span class="history-date">@record.FinancialDate.ToString("dd/MM/yyyy hh:mm tt")</span>
                             </div>
-                            <span class="history-badge">@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock In" : record.StockActivityType)</span>
+                            <div class="history-entry-actions">
+                                <span class="history-badge">@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock In" : record.StockActivityType)</span>
+                                @if (CanDeleteStockIn)
+                                {
+                                    <button type="button"
+                                            class="history-icon-btn history-delete-btn"
+                                            title="Delete stock in"
+                                            aria-label="Delete stock in"
+                                            disabled="@isDeletingHistory"
+                                            @onclick="() => ConfirmDeleteStockInAsync(record)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                }
+                            </div>
                         </div>
 
                         @if (!string.IsNullOrWhiteSpace(record.Remarks))
@@ -307,6 +329,9 @@
     private bool IsSuccessCreating;
     private bool stockInHistoryIsOpen;
     private bool isLoadingHistory;
+    private bool isDeletingHistory;
+    private string historyMessage = "";
+    private bool historyOperationSucceeded;
     private List<Doc_Stock_GRNDM> stockInHistory = new();
     private EBI.UC.Doc_Stock_GRN? selectedStockInRecord;
     private DateTime _historyStartDate = DateTime.Today.AddDays(-30);
@@ -395,7 +420,7 @@
         isLoading = true;
         try
         {
-            var branchId = AppState.SelectedBranchID;
+            var branchId = ResolveBranchId();
 
             // Load master items
             allItemsList = await InventoryService.LoadItemsAsync(branchId) ?? new List<InventoryDM>();
@@ -545,6 +570,7 @@
     {
         stockInHistoryIsOpen = true;
         selectedStockInRecord = null;
+        historyMessage = "";
         await RefreshStockInHistoryAsync();
     }
 
@@ -552,6 +578,7 @@
     {
         stockInHistoryIsOpen = false;
         selectedStockInRecord = null;
+        historyMessage = "";
     }
 
     private void BackToStockInHistoryList()
@@ -590,8 +617,8 @@
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[InventoryStockIn] Error loading GRN history: {ex.Message}");
-            operationSucceeded = false;
-            operationMessage = "Unable to load stock in history.";
+            historyOperationSucceeded = false;
+            historyMessage = "Unable to load stock in history.";
         }
         finally
         {
@@ -610,13 +637,89 @@
             selectedStockInRecord = await InventoryService.GetStockGRNRecordAsync(record.DocumentID);
             if (selectedStockInRecord == null)
             {
-                operationSucceeded = false;
-                operationMessage = "Unable to load this stock in record.";
+                historyOperationSucceeded = false;
+                historyMessage = "Unable to load this stock in record.";
             }
         }
         finally
         {
             isLoadingHistory = false;
+        }
+    }
+
+    private bool CanDeleteStockIn => CheckPermissionForForm(
+        new[] { "StockReceive", "Stock Receive", "StockIn", "Stock In", "Receive", "GRN" });
+
+    private bool CheckPermissionForForm(string[] formNames)
+    {
+        if (AppState.Permissions == null)
+            return true;
+
+        foreach (var name in formNames)
+        {
+            foreach (var permission in AppState.Permissions)
+            {
+                if (string.Equals(permission.Key, name, StringComparison.OrdinalIgnoreCase))
+                    return permission.Value.CanDeleteRecord;
+            }
+        }
+
+        return true;
+    }
+
+    private async Task ConfirmDeleteStockInAsync(Doc_Stock_GRNDM record)
+    {
+        if (!CanDeleteStockIn)
+        {
+            historyOperationSucceeded = false;
+            historyMessage = "You do not have permission to delete stock in records.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(record.DocumentID))
+        {
+            historyOperationSucceeded = false;
+            historyMessage = "This stock in record has no document ID.";
+            return;
+        }
+
+        var displayCode = string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode;
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Delete stock in {displayCode}? Its inventory movement will be reversed.");
+        if (!confirmed)
+            return;
+
+        isDeletingHistory = true;
+        historyMessage = "";
+        try
+        {
+            var response = await InventoryService.DeleteStockGRNAsync(record.DocumentID);
+            if (response?.statusCode is >= 200 and < 300)
+            {
+                historyOperationSucceeded = true;
+                historyMessage = string.IsNullOrWhiteSpace(response.message)
+                    ? $"Stock in {displayCode} deleted."
+                    : response.message;
+                await RefreshStockInHistoryAsync();
+                await LoadDataAsync();
+                return;
+            }
+
+            historyOperationSucceeded = false;
+            historyMessage = string.IsNullOrWhiteSpace(response?.message)
+                ? "Unable to delete this stock in record."
+                : response.message;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[InventoryStockIn] Delete GRN failed: {ex.Message}");
+            historyOperationSucceeded = false;
+            historyMessage = $"Unable to delete this stock in record: {ex.Message}";
+        }
+        finally
+        {
+            isDeletingHistory = false;
         }
     }
 
@@ -672,6 +775,7 @@
                 InventoryItemAccountID = masterInventoryItem?.MasterAccountID ?? item.Id,
                 LineItemID = masterInventoryItem?.MasterAccountID ?? item.Id,
                 Quantity = item.StockInQuantity,
+                AdjustedQuantity = item.StockInQuantity,
                 UnitPrice = item.StockInCost,
                 Cost = item.StockInCost,
                 SubTotal = lineTotal,
@@ -706,6 +810,7 @@
             operationMessage = "Stock in created successfully.";
             stockInItems.Clear();
             remarks = "";
+            await LoadDataAsync();
 
             if (OnConfirm.HasDelegate)
                 await OnConfirm.InvokeAsync();

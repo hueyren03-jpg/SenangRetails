@@ -355,6 +355,11 @@ namespace SenangRetails.Shared.Services.InventoryService
             return response?.statusCode == 200 ? response.result : null;
         }
 
+        public Task<ApiResponseRoot<string>?> DeleteStockGRNAsync(string documentId)
+        {
+            return _ac.DocStockGRNDeleteRecord(documentId);
+        }
+
         public async Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(GinDocumentDto request)
         {
             var response = await _ac.DocStockGINCreateRecord(request);
@@ -400,6 +405,11 @@ namespace SenangRetails.Shared.Services.InventoryService
         {
             var response = await _ac.DocStockGINLoadProxy(branchId, startDate, endDate, pageNumber, pageSize);
             return response?.statusCode == 200 ? response.result : null;
+        }
+
+        public Task<ApiResponseRoot<string>?> DeleteStockGINAsync(string documentId)
+        {
+            return _ac.DocStockGINDeleteRecord(documentId);
         }
 
         public async Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentByBranchIdAsync(string? branchId = null)

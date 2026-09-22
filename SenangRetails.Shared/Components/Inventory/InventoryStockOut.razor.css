@@ -587,6 +587,15 @@ MODALS DEEP SCYLED (SlideModal & Calculator children)
     background: #F7EDEF;
 }
 
+.history-icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.history-operation-message {
+    margin: 10px 0 5px;
+}
+
 .date-filter-row {
     display: flex;
     gap: 10px;
@@ -645,6 +654,24 @@ MODALS DEEP SCYLED (SlideModal & Calculator children)
     min-width: 0;
     display: flex;
     flex-direction: column;
+}
+
+.history-entry-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.history-delete-btn,
+.history-icon-btn.history-delete-btn:last-child {
+    width: 30px;
+    height: 30px;
+    color: #dc3545;
+}
+
+.history-delete-btn:hover {
+    background: #fff1f2;
 }
 
 .history-doc-number {

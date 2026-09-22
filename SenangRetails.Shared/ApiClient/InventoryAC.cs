@@ -613,6 +613,13 @@ namespace SenangRetails.Shared.ApiClient
                 });
         }
 
+        public async Task<ApiResponseRoot<string>?> DocStockGRNDeleteRecord(string documentId)
+        {
+            if (!await SetBearerToken()) return null;
+            return await DeleteAsync<object, ApiResponseRoot<string>>(
+                "api/Doc_Stock_GRN/Delete", new { id = documentId });
+        }
+
         // Goods Issue Note (GIN) API — mirrors the GRN integration pattern.
         public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGINCreateRecord(GinDocumentDto request)
         {
@@ -653,6 +660,13 @@ namespace SenangRetails.Shared.ApiClient
                     pageNumber,
                     pageSize
                 });
+        }
+
+        public async Task<ApiResponseRoot<string>?> DocStockGINDeleteRecord(string documentId)
+        {
+            if (!await SetBearerToken()) return null;
+            return await DeleteAsync<object, ApiResponseRoot<string>>(
+                "api/Doc_Stock_GIN/Delete", new { id = documentId });
         }
 
         public async Task<ApiResponseRoot<List<InventoryMovement_PendingAcceptDM>>?> GetPendingAcceptDocumentByBranchId(string? branchId = null)

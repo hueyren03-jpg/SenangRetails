@@ -215,5 +215,38 @@ namespace SenangRetails.Shared.ApiClient
                 return DeserializeOrFallback<TResponse>("", 0, ex.Message);
             }
         }
+
+        protected async Task<TResponse?> DeleteAsync<TRequest, TResponse>(string endpoint, TRequest data)
+        {
+            try
+            {
+                var requestJson = JsonSerializer.Serialize(data);
+                System.Diagnostics.Debug.WriteLine($"[API DELETE {endpoint}] Request Body: {requestJson}");
+                System.Console.WriteLine($"[API DELETE {endpoint}] Request Body: {requestJson}");
+
+                var request = new HttpRequestMessage(HttpMethod.Delete, endpoint)
+                {
+                    Content = new StringContent(requestJson, Encoding.UTF8, "application/json")
+                };
+                if (_httpClient.DefaultRequestHeaders.Authorization is { } auth)
+                    request.Headers.Authorization = auth;
+
+                var response = await _httpClient.SendAsync(request);
+                string body = await response.Content.ReadAsStringAsync();
+                System.Diagnostics.Debug.WriteLine($"[API DELETE {endpoint}] HTTP {(int)response.StatusCode} | Body: {body}");
+
+                return DeserializeOrFallback<TResponse>(body, (int)response.StatusCode);
+            }
+            catch (TaskCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine($"[API TIMEOUT] DELETE {endpoint}");
+                return DeserializeOrFallback<TResponse>("", 0, "Request timed out. Check your connection.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[API ERROR] DELETE {endpoint}: {ex.Message}");
+                return DeserializeOrFallback<TResponse>("", 0, ex.Message);
+            }
+        }
     }
 }

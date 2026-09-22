@@ -32,6 +32,7 @@ namespace SenangRetails.Shared.Services.InventoryService
             DateTime endDate,
             int pageNumber,
             int pageSize);
+        Task<ApiResponseRoot<string>?> DeleteStockGRNAsync(string documentId);
 
         // Goods Issue Note (GIN)
         Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(GinDocumentDto request);
@@ -43,6 +44,7 @@ namespace SenangRetails.Shared.Services.InventoryService
             DateTime endDate,
             int pageNumber,
             int pageSize);
+        Task<ApiResponseRoot<string>?> DeleteStockGINAsync(string documentId);
         Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentByBranchIdAsync(string? branchId = null);
         Task<List<InventoryMovement_PendingAcceptDM>?> GetPendingAcceptDocumentDetailsAsync(string documentId);
         Task<ApiResponseRoot<string>?> AcceptStockInAsync(string documentId);

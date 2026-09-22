@@ -6,6 +6,7 @@
 @inject IInventoryService InventoryService
 @inject AppState AppState
 @inject LocalImageCacheService LocalImageCache
+@inject IJSRuntime JS
 
 <div class="view-body">
     <div class="header">
@@ -163,6 +164,13 @@
             </div>
         }
 
+        @if (!string.IsNullOrWhiteSpace(historyMessage))
+        {
+            <div class="alert @(historyOperationSucceeded ? "alert-success" : "alert-danger") history-operation-message">
+                @historyMessage
+            </div>
+        }
+
         <div class="history-modal-content">
             @if (isLoadingHistory)
             {
@@ -243,7 +251,21 @@
                                 <span class="history-doc-number">@(string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode)</span>
                                 <span class="history-date">@record.FinancialDate.ToString("dd/MM/yyyy hh:mm tt")</span>
                             </div>
-                            <span class="history-badge">@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock Out" : record.StockActivityType)</span>
+                            <div class="history-entry-actions">
+                                <span class="history-badge">@(string.IsNullOrWhiteSpace(record.StockActivityType) ? "Stock Out" : record.StockActivityType)</span>
+                                @if (CanDeleteStockOut)
+                                {
+                                    <button type="button"
+                                            class="history-icon-btn history-delete-btn"
+                                            title="Delete stock out"
+                                            aria-label="Delete stock out"
+                                            disabled="@isDeletingHistory"
+                                            @onclick="() => ConfirmDeleteStockOutAsync(record)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                }
+                            </div>
                         </div>
 
                         @if (!string.IsNullOrWhiteSpace(record.Remarks))
@@ -308,6 +330,9 @@
     private List<InventoryDM> allItemsList = new();
     private bool stockOutHistoryIsOpen;
     private bool isLoadingHistory;
+    private bool isDeletingHistory;
+    private string historyMessage = "";
+    private bool historyOperationSucceeded;
     private List<Doc_Stock_GRNDM> stockOutHistory = new();
     private GinDocumentDto? selectedStockOutRecord;
     private DateTime _historyStartDate = DateTime.Today.AddDays(-30);
@@ -391,7 +416,7 @@
         isLoading = true;
         try
         {
-            var branchId = AppState.SelectedBranchID;
+            var branchId = ResolveBranchId();
 
             // Load master items
             allItemsList = await InventoryService.LoadItemsAsync(branchId) ?? new List<InventoryDM>();
@@ -511,6 +536,7 @@
     {
         stockOutHistoryIsOpen = true;
         selectedStockOutRecord = null;
+        historyMessage = "";
         await RefreshStockOutHistoryAsync();
     }
 
@@ -518,6 +544,7 @@
     {
         stockOutHistoryIsOpen = false;
         selectedStockOutRecord = null;
+        historyMessage = "";
     }
 
     private void BackToStockOutHistoryList()
@@ -556,8 +583,8 @@
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[InventoryStockOut] Error loading GIN history: {ex.Message}");
-            operationSucceeded = false;
-            operationMessage = "Unable to load stock out history.";
+            historyOperationSucceeded = false;
+            historyMessage = "Unable to load stock out history.";
         }
         finally
         {
@@ -576,13 +603,89 @@
             selectedStockOutRecord = await InventoryService.GetStockGINRecordAsync(record.DocumentID);
             if (selectedStockOutRecord == null)
             {
-                operationSucceeded = false;
-                operationMessage = "Unable to load this stock out record.";
+                historyOperationSucceeded = false;
+                historyMessage = "Unable to load this stock out record.";
             }
         }
         finally
         {
             isLoadingHistory = false;
+        }
+    }
+
+    private bool CanDeleteStockOut => CheckPermissionForForm(
+        new[] { "StockIssue", "Stock Issue", "StockOut", "Stock Out", "GIN", "Goods Issue Note" });
+
+    private bool CheckPermissionForForm(string[] formNames)
+    {
+        if (AppState.Permissions == null)
+            return true;
+
+        foreach (var name in formNames)
+        {
+            foreach (var permission in AppState.Permissions)
+            {
+                if (string.Equals(permission.Key, name, StringComparison.OrdinalIgnoreCase))
+                    return permission.Value.CanDeleteRecord;
+            }
+        }
+
+        return true;
+    }
+
+    private async Task ConfirmDeleteStockOutAsync(Doc_Stock_GRNDM record)
+    {
+        if (!CanDeleteStockOut)
+        {
+            historyOperationSucceeded = false;
+            historyMessage = "You do not have permission to delete stock out records.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(record.DocumentID))
+        {
+            historyOperationSucceeded = false;
+            historyMessage = "This stock out record has no document ID.";
+            return;
+        }
+
+        var displayCode = string.IsNullOrWhiteSpace(record.DisplayCode) ? record.DocumentID : record.DisplayCode;
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Delete stock out {displayCode}? Its inventory movement will be reversed.");
+        if (!confirmed)
+            return;
+
+        isDeletingHistory = true;
+        historyMessage = "";
+        try
+        {
+            var response = await InventoryService.DeleteStockGINAsync(record.DocumentID);
+            if (response?.statusCode is >= 200 and < 300)
+            {
+                historyOperationSucceeded = true;
+                historyMessage = string.IsNullOrWhiteSpace(response.message)
+                    ? $"Stock out {displayCode} deleted."
+                    : response.message;
+                await RefreshStockOutHistoryAsync();
+                await LoadDataAsync();
+                return;
+            }
+
+            historyOperationSucceeded = false;
+            historyMessage = string.IsNullOrWhiteSpace(response?.message)
+                ? "Unable to delete this stock out record."
+                : response.message;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[InventoryStockOut] Delete GIN failed: {ex.Message}");
+            historyOperationSucceeded = false;
+            historyMessage = $"Unable to delete this stock out record: {ex.Message}";
+        }
+        finally
+        {
+            isDeletingHistory = false;
         }
     }
 
@@ -645,6 +748,7 @@
                 InventoryItemAccountID = masterInventoryItem?.MasterAccountID ?? item.Id,
                 LineItemID = masterInventoryItem?.MasterAccountID ?? item.Id,
                 Quantity = item.StockOutQuantity,
+                AdjustedQuantity = item.StockOutQuantity,
                 UnitPrice = item.StockOutCost,
                 Cost = item.StockOutCost,
                 SubTotal = lineTotal,
@@ -681,6 +785,7 @@
             operationMessage = "Stock out created successfully.";
             stockOutItems.Clear();
             remarks = "";
+            await LoadDataAsync();
 
             if (OnConfirm.HasDelegate)
                 await OnConfirm.InvokeAsync();
