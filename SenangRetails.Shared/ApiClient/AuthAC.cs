@@ -1,3 +1,4 @@
+using EBI.DM;
 using SenangRetails.Shared.Models.DTOs;
 using SenangRetails.Shared.Models.Entities;
 using System.Diagnostics;
@@ -40,11 +41,11 @@ namespace SenangRetails.Shared.ApiClient
 
 
 
-        public async Task<ApiResponseRoot<UserDetailResult>?> GetUserByEmailAsync(string email)
+        public async Task<ApiResponseRoot<Security_UserDM>?> GetUserByEmailAsync(string email)
         {
             var request = new { Id = email };
 
-            var response = await PostAsync<object, ApiResponseRoot<UserDetailResult>>(
+            var response = await PostAsync<object, ApiResponseRoot<Security_UserDM>>(
                 "api/Security_User/GetUserByEmail", request);
 
             if (response?.statusCode == 200)
