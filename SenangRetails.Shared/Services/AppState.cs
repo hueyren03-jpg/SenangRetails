@@ -17,8 +17,8 @@ namespace SenangRetails.Shared.Services
         public string? BranchGroupID { get; set; }
         public string? DefaultWorkingBranchID { get; set; }
         public string? UserEmail { get; set; }
-        private Dictionary<string, SecurityPermissionItem>? _permissions;
-        public Dictionary<string, SecurityPermissionItem>? Permissions
+        private Dictionary<string, SecurityDM>? _permissions;
+        public Dictionary<string, SecurityDM>? Permissions
         {
             get => _permissions;
             set
