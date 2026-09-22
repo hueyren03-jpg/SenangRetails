@@ -233,7 +233,7 @@
                 };
 
                 var balances = await InventoryService.GetStockBalanceByBranchAndByItemAsync(req)
-                              ?? new Dictionary<string, StockBalanceItem>();
+                              ?? new Dictionary<string, rpt_StockBalanceByBranchByItemsDM>();
 
                 allAvailableItems.Clear();
                 foreach (var pi in productItems)
