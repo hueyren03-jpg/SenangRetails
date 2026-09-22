@@ -565,17 +565,17 @@ namespace SenangRetails.Shared.ApiClient
                 $"api/InventoryFull/Delete?id={Uri.EscapeDataString(masterAccountId)}");
         }
 
-        public async Task<ApiResponseRoot<List<Models.DTOs.LowStockItem>>?> GetStockBelowReorderPoint()
+        public async Task<ApiResponseRoot<List<Models.DTOs.rpt_StockBelowReorderPointDM>>?> GetStockBelowReorderPoint()
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<List<Models.DTOs.LowStockItem>>>(
+            return await PostAsync<object, ApiResponseRoot<List<Models.DTOs.rpt_StockBelowReorderPointDM>>>(
                 "api/Inventory/GetStockBelowReorderPoint", new { id = _appState.CurrentBranch?.BranchID });
         }
 
-        public async Task<ApiResponseRoot<Dictionary<string, StockBalanceItem>>?> GetStockBalanceByBranchAndByItem(StockBalanceRequest request)
+        public async Task<ApiResponseRoot<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>>?> GetStockBalanceByBranchAndByItem(StockBalanceRequest request)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<StockBalanceRequest, ApiResponseRoot<Dictionary<string, StockBalanceItem>>>(
+            return await PostAsync<StockBalanceRequest, ApiResponseRoot<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>>>(
                     "api/Inventory/GetStockBalanceByBranchAndByItem", request);
         }
 
