@@ -1,3 +1,4 @@
+using EBI.DM;
 using SenangRetails.Shared.Models;
 using SenangRetails.Shared.Models.DTOs;
 using SenangRetails.Shared.Models.Entities;
@@ -27,46 +28,52 @@ namespace SenangRetails.Shared.ApiClient
             return CreateBearerAuthAsync(token);
         }
 
-        public async Task<ApiResponse<List<StaffResponseDTO>>> FetchStaffListAsync()
+        public async Task<ApiResponse<List<EmployeeDM>>> FetchStaffListAsync()
         {
             if (!await SetBearerToken()) return null;
-            var apiResponse = await PostAsync<object, ApiResponse<List<StaffResponseDTO>>>("api/Employee/GetAllEmployees", null);
+            var apiResponse = await PostAsync<object, ApiResponse<List<EmployeeDM>>>("api/Employee/GetAllEmployees", null);
             var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             var jsonDebug = System.Text.Json.JsonSerializer.Serialize(apiResponse, options);
             Debug.WriteLine("testing1", jsonDebug);
-            return apiResponse ?? new ApiResponse<List<StaffResponseDTO>> { StatusCode = 500, Message = "No response from server" };
+            return apiResponse ?? new ApiResponse<List<EmployeeDM>> { StatusCode = 500, Message = "No response from server" };
         }
 
-        public async Task<ApiResponseRoot<string>> CreateStaffAsync(StaffRequestDTO payload)
+        public async Task<ApiResponseRoot<string>> CreateStaffAsync(EmployeeDM payload)
         {
             if (!await SetBearerToken()) return null;
-            payload.SaveAction = "Added";
+
+            var wirePayload = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(
+                System.Text.Json.JsonSerializer.Serialize(payload))!;
+            wirePayload["SaveAction"] = System.Text.Json.JsonSerializer.SerializeToElement("Added");
+            wirePayload["IsDirty"] = System.Text.Json.JsonSerializer.SerializeToElement(true);
+
             var debugOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-            string payloadJson = System.Text.Json.JsonSerializer.Serialize(payload, debugOptions);
+            string payloadJson = System.Text.Json.JsonSerializer.Serialize(wirePayload, debugOptions);
 
             Console.WriteLine("DEBUG: Sending Payload to api/Employee/CreateRecord:");
             Console.WriteLine(payloadJson);
 
-            var apiResponse = await PostAsync<StaffRequestDTO, ApiResponseRoot<string>>("api/Employee/CreateRecord", payload);
-            var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-            var jsonDebug = System.Text.Json.JsonSerializer.Serialize(apiResponse, options);
-
-            return apiResponse;
+            return await PostAsync<Dictionary<string, System.Text.Json.JsonElement>, ApiResponseRoot<string>>(
+                "api/Employee/CreateRecord", wirePayload);
         }
 
-        public async Task<ApiResponseRoot<string>> PutStaffAsync(StaffRequestDTO payload)
+        public async Task<ApiResponseRoot<string>> PutStaffAsync(EmployeeDM payload)
         {
             if (!await SetBearerToken()) return null;
 
+            var wirePayload = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(
+                System.Text.Json.JsonSerializer.Serialize(payload))!;
+            wirePayload["SaveAction"] = System.Text.Json.JsonSerializer.SerializeToElement("Changed");
+            wirePayload["IsDirty"] = System.Text.Json.JsonSerializer.SerializeToElement(true);
+
             var debugOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-            string payloadJson = System.Text.Json.JsonSerializer.Serialize(payload, debugOptions);
+            string payloadJson = System.Text.Json.JsonSerializer.Serialize(wirePayload, debugOptions);
 
             Console.WriteLine("DEBUG: Sending Payload to api/Employee/UpdateRecord:");
             Console.WriteLine(payloadJson);
 
-            var apiResponse = await PutAsync<StaffRequestDTO, ApiResponseRoot<string>>("api/Employee/UpdateRecord", payload);
-
-            return apiResponse;
+            return await PutAsync<Dictionary<string, System.Text.Json.JsonElement>, ApiResponseRoot<string>>(
+                "api/Employee/UpdateRecord", wirePayload);
         }
     }
 }
