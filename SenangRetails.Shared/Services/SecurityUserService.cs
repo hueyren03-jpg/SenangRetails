@@ -1,5 +1,5 @@
+using EBI.DM;
 using SenangRetails.Shared.ApiClient;
-using SenangRetails.Shared.Models.DTOs;
 
 namespace SenangRetails.Shared.Services
 {
@@ -19,7 +19,7 @@ namespace SenangRetails.Shared.Services
         public bool CanEdit(string formName)   => Check(formName, p => p.CanEditRecord);
         public bool CanDelete(string formName) => Check(formName, p => p.CanDeleteRecord);
 
-        private bool Check(string formName, Func<SecurityPermissionItem, bool> selector)
+        private bool Check(string formName, Func<SecurityDM, bool> selector)
         {
             if (_appState.Permissions == null) return true;
             foreach (var kv in _appState.Permissions)
@@ -41,13 +41,13 @@ namespace SenangRetails.Shared.Services
             _appState.BranchGroupID          = u.BranchGroupID;
             _appState.DefaultWorkingBranchID = u.DefaultWorkingBranchID;
             _appState.UserEmail              = email;
-            _appState.Permissions            = u.LstSecurities;
+            _appState.Permissions            = u.lstSecurities;
             return true;
         }
 
-        public async Task<(bool ok, string message)> SavePermissionsAsync(Dictionary<string, SecurityPermissionItem> permissions)
+        public async Task<(bool ok, string message)> SavePermissionsAsync(Dictionary<string, SecurityDM> permissions)
         {
-            var dm = new SecurityUserUpdateDM
+            var dm = new Security_UserDM
             {
                 UserID                 = _appState.UserID,
                 EmployeeID             = _appState.EmployeeID,
@@ -56,9 +56,7 @@ namespace SenangRetails.Shared.Services
                 BranchGroupID          = _appState.BranchGroupID,
                 BranchID               = _appState.SelectedBranchID,
                 DefaultWorkingBranchID = _appState.DefaultWorkingBranchID,
-                LstSecurities          = permissions,
-                SaveAction             = 2,
-                IsDirty                = true
+                lstSecurities          = permissions
             };
 
             var result = await _ac.UpdateRecordAsync(dm);
