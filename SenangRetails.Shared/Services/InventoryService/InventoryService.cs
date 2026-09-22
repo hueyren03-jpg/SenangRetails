@@ -316,7 +316,7 @@ namespace SenangRetails.Shared.Services.InventoryService
                 .ToDictionary(x => x.Key, x => x.ToList());
         }
 
-        public async Task<List<LowStockItem>?> GetStockBelowReorderPointAsync()
+        public async Task<List<rpt_StockBelowReorderPointDM>?> GetStockBelowReorderPointAsync()
         {
             var response = await _ac.GetStockBelowReorderPoint();
             if (response?.statusCode == 200)
@@ -324,7 +324,7 @@ namespace SenangRetails.Shared.Services.InventoryService
             return null;
         }
 
-        public async Task<Dictionary<string, StockBalanceItem>?> GetStockBalanceByBranchAndByItemAsync(StockBalanceRequest request)
+        public async Task<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>?> GetStockBalanceByBranchAndByItemAsync(StockBalanceRequest request)
         {
             var response = await _ac.GetStockBalanceByBranchAndByItem(request);
             if (response?.statusCode == 200)
