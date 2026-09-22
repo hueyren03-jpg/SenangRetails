@@ -50,11 +50,8 @@
     <Folder Include="wwwroot\lib\fontawesome\" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include="..\..\..\..\Downloads\EBIDM.dll" Link="Libraries\EBI\EBIDM.dll" />
-    <None Include="..\..\..\..\Downloads\EBIEF.dll" Link="Libraries\EBI\EBIEF.dll" />
-    <None Include="..\..\..\..\Downloads\EBIEnum.dll" Link="Libraries\EBI\EBIEnum.dll" />
-    <None Include="..\..\..\..\Downloads\EBIUC.dll" Link="Libraries\EBI\EBIUC.dll" />
-  </ItemGroup>
+ 
+  
+
 
 </Project>
