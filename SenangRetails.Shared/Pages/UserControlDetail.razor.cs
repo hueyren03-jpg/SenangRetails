@@ -1,7 +1,7 @@
+using EBI.DM;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using SenangRetails.Shared.Models.DTOs;
-using SenangRetails.Shared.Models.DTOs.UserControl;
 using SenangRetails.Shared.Services.UserControlService;
 using System;
 using System.Collections.Generic;
