@@ -3,6 +3,7 @@
 @using SenangRetails.Shared.Services.InventoryService
 @using SenangRetails.Shared.Models.DTOs
 @using EBI.DM
+@using EBI.UC
 @inject IInventoryService InventoryService
 @inject AppState AppState
 @inject LocalImageCacheService LocalImageCache
@@ -333,8 +334,8 @@
     private bool isDeletingHistory;
     private string historyMessage = "";
     private bool historyOperationSucceeded;
-    private List<Doc_Stock_GRNDM> stockOutHistory = new();
-    private GinDocumentDto? selectedStockOutRecord;
+    private List<Doc_Stock_GINDM> stockOutHistory = new();
+    private Doc_Stock_GIN? selectedStockOutRecord;
     private DateTime _historyStartDate = DateTime.Today.AddDays(-30);
     private DateTime historyStartDate
     {
@@ -575,7 +576,7 @@
                 historyStartDate.Date,
                 historyEndDate.Date.AddDays(1).AddTicks(-1),
                 1,
-                500) ?? new List<Doc_Stock_GRNDM>())
+                500) ?? new List<Doc_Stock_GINDM>())
                 .Where(record => record != null && !record.IsVoid)
                 .OrderByDescending(record => record.FinancialDate)
                 .ToList();
@@ -592,7 +593,7 @@
         }
     }
 
-    private async Task OpenStockOutHistoryRecordAsync(Doc_Stock_GRNDM record)
+    private async Task OpenStockOutHistoryRecordAsync(Doc_Stock_GINDM record)
     {
         if (string.IsNullOrWhiteSpace(record.DocumentID))
             return;
@@ -633,7 +634,7 @@
         return true;
     }
 
-    private async Task ConfirmDeleteStockOutAsync(Doc_Stock_GRNDM record)
+    private async Task ConfirmDeleteStockOutAsync(Doc_Stock_GINDM record)
     {
         if (!CanDeleteStockOut)
         {
@@ -716,7 +717,7 @@
         }
 
         var now = DateTime.Now;
-        var request = new GinDocumentDto();
+        var request = new Doc_Stock_GIN();
         var header = request.mobjDoc_Stock_GIN;
         var total = activeItems.Sum(i => (decimal)i.StockOutQuantity * i.StockOutCost);
 
