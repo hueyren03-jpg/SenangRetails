@@ -1,4 +1,4 @@
-using SenangRetails.Shared.Models.DTOs.UserControl;
+using EBI.DM;
 using SenangRetails.Shared.Models.Entities;
 using System;
 using System.Collections.Generic;
