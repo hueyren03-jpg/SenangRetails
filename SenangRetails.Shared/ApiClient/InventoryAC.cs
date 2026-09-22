@@ -620,29 +620,29 @@ namespace SenangRetails.Shared.ApiClient
                 "api/Doc_Stock_GRN/Delete", new { id = documentId });
         }
 
-        // Goods Issue Note (GIN) API — mirrors the GRN integration pattern.
-        public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGINCreateRecord(GinDocumentDto request)
+        // Goods Issue Note (GIN) API — uses the vendor EBI.UC.Doc_Stock_GIN contract.
+        public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGINCreateRecord(Doc_Stock_GIN request)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<GinDocumentDto, ApiResponseRoot<StockDocumentApiResult>>(
+            return await PostAsync<Doc_Stock_GIN, ApiResponseRoot<StockDocumentApiResult>>(
                 "api/Doc_Stock_GIN/CreateRecord", request);
         }
 
-        public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGINUpdateRecord(GinDocumentDto request)
+        public async Task<ApiResponseRoot<StockDocumentApiResult>?> DocStockGINUpdateRecord(Doc_Stock_GIN request)
         {
             if (!await SetBearerToken()) return null;
-            return await PutAsync<GinDocumentDto, ApiResponseRoot<StockDocumentApiResult>>(
+            return await PutAsync<Doc_Stock_GIN, ApiResponseRoot<StockDocumentApiResult>>(
                 "api/Doc_Stock_GIN/UpdateRecord", request);
         }
 
-        public async Task<ApiResponseRoot<GinDocumentDto>?> DocStockGINLoadRecord(string documentId)
+        public async Task<ApiResponseRoot<Doc_Stock_GIN>?> DocStockGINLoadRecord(string documentId)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<GinDocumentDto>>(
+            return await PostAsync<object, ApiResponseRoot<Doc_Stock_GIN>>(
                 "api/Doc_Stock_GIN/LoadRecord", new { id = documentId });
         }
 
-        public async Task<ApiResponseRoot<List<Doc_Stock_GRNDM>>?> DocStockGINLoadProxy(
+        public async Task<ApiResponseRoot<List<Doc_Stock_GINDM>>?> DocStockGINLoadProxy(
             string branchId,
             DateTime startDate,
             DateTime endDate,
@@ -650,7 +650,7 @@ namespace SenangRetails.Shared.ApiClient
             int pageSize)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<List<Doc_Stock_GRNDM>>>(
+            return await PostAsync<object, ApiResponseRoot<List<Doc_Stock_GINDM>>>(
                 "api/Doc_Stock_GIN/LoadProxy",
                 new
                 {
