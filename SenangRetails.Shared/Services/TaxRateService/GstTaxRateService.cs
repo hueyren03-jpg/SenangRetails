@@ -1,3 +1,4 @@
+using EBI.DM;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -5,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using SenangRetails.Shared.Services.DataLayer.Abstractions;
 using SenangRetails.Shared.ApiClient;
-using SenangRetails.Shared.Models.DTOs;
 using SenangRetails.Shared.Services.BranchService;
 using SenangRetails.Shared.Services.Connectivity;
 
@@ -19,7 +19,7 @@ namespace SenangRetails.Shared.Services.TaxRateService
         private readonly INetworkStatusService _network;
         private readonly ILocalJsonCache _cache;
 
-        private readonly Dictionary<string, IReadOnlyList<GstTaxCodeDto>> _codesByTaxType = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IReadOnlyList<GSTTaxCodeDM>> _codesByTaxType = new(StringComparer.OrdinalIgnoreCase);
         private readonly SemaphoreSlim _loadLock = new(1, 1);
 
         public GstTaxRateService(
@@ -57,7 +57,7 @@ namespace SenangRetails.Shared.Services.TaxRateService
             return row?.TaxRate ?? 0m;
         }
 
-        private async Task<IReadOnlyList<GstTaxCodeDto>> EnsureCodesAsync(string taxTypeId, CancellationToken cancellationToken)
+        private async Task<IReadOnlyList<GSTTaxCodeDM>> EnsureCodesAsync(string taxTypeId, CancellationToken cancellationToken)
         {
             if (_codesByTaxType.TryGetValue(taxTypeId, out var cached))
                 return cached;
@@ -68,7 +68,7 @@ namespace SenangRetails.Shared.Services.TaxRateService
                 if (_codesByTaxType.TryGetValue(taxTypeId, out cached))
                     return cached;
 
-                IReadOnlyList<GstTaxCodeDto> list = Array.Empty<GstTaxCodeDto>();
+                IReadOnlyList<GSTTaxCodeDM> list = Array.Empty<GSTTaxCodeDM>();
                 var cacheKey = $"tax-codes:{taxTypeId}";
 
                 if (_network.IsInternetAvailable)
@@ -89,8 +89,8 @@ namespace SenangRetails.Shared.Services.TaxRateService
                 }
 
                 if (list.Count == 0)
-                    list = await _cache.GetAsync<List<GstTaxCodeDto>>(cacheKey, cancellationToken).ConfigureAwait(false)
-                        ?? new List<GstTaxCodeDto>();
+                    list = await _cache.GetAsync<List<GSTTaxCodeDM>>(cacheKey, cancellationToken).ConfigureAwait(false)
+                        ?? new List<GSTTaxCodeDM>();
 
                 _codesByTaxType[taxTypeId] = list;
                 return list;
