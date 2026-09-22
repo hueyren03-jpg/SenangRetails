@@ -48,12 +48,17 @@ namespace SenangRetails.Shared.ApiClient
 
             try
             {
-                record.SaveAction = 0; 
-                record.IsDirty = true;
+                // SecurityDM now comes from EBIDM.dll. Keep the vendor model, but
+                // preserve the API's existing wire values without depending on
+                // the CLR type of the DLL's SaveAction property.
+                var payload = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(
+                    System.Text.Json.JsonSerializer.Serialize(record))!;
+                payload["SaveAction"] = System.Text.Json.JsonSerializer.SerializeToElement(0);
+                payload["IsDirty"] = System.Text.Json.JsonSerializer.SerializeToElement(true);
 
-                return await PostAsync<SecurityDM, ApiResponseRoot<string>>(
+                return await PostAsync<Dictionary<string, System.Text.Json.JsonElement>, ApiResponseRoot<string>>(
                     "api/Security/UpdateRecord",
-                    record);
+                    payload);
             }
             catch (Exception ex)
             {
