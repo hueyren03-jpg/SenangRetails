@@ -572,10 +572,10 @@ namespace SenangRetails.Shared.ApiClient
                 "api/Inventory/GetStockBelowReorderPoint", new { id = _appState.CurrentBranch?.BranchID });
         }
 
-        public async Task<ApiResponseRoot<Dictionary<string, StockBalanceItem>>?> GetStockBalanceByBranchAndByItem(StockBalanceRequest request)
+        public async Task<ApiResponseRoot<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>>?> GetStockBalanceByBranchAndByItem(StockBalanceRequest request)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<StockBalanceRequest, ApiResponseRoot<Dictionary<string, StockBalanceItem>>>(
+            return await PostAsync<StockBalanceRequest, ApiResponseRoot<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>>>(
                     "api/Inventory/GetStockBalanceByBranchAndByItem", request);
         }
 
