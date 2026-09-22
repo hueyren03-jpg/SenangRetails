@@ -22,8 +22,8 @@ namespace SenangRetails.Shared.Services.InventoryService
         Task<Dictionary<string, List<InventoryDM>>?> GetCurrentBranchGroupedItemsAsync();
         Task<Inventory?> LoadFullPackageAsync(string masterAccountId);
         Task<InventoryFullLoadDetail?> LoadFullPackageDetailAsync(string masterAccountId);
-        Task<List<LowStockItem>?> GetStockBelowReorderPointAsync();
-        Task<Dictionary<string, StockBalanceItem>?> GetStockBalanceByBranchAndByItemAsync(StockBalanceRequest request);
+        Task<List<rpt_StockBelowReorderPointDM>?> GetStockBelowReorderPointAsync();
+        Task<Dictionary<string, rpt_StockBalanceByBranchByItemsDM>?> GetStockBalanceByBranchAndByItemAsync(StockBalanceRequest request);
         Task<bool> CreateStockInGRN(EBI.UC.Doc_Stock_GRN request);
         Task<EBI.UC.Doc_Stock_GRN?> GetStockGRNRecordAsync(string documentId);
         Task<List<Doc_Stock_GRNDM>?> GetStockGRNRecordsAsync(
