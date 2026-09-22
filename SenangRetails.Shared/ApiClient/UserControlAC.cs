@@ -1,5 +1,5 @@
+using EBI.DM;
 using SenangRetails.Shared.Models.DTOs;
-using SenangRetails.Shared.Models.DTOs.UserControl;
 using SenangRetails.Shared.Models.Entities;
 using SenangRetails.Shared.Services.AuthService;
 using System;
