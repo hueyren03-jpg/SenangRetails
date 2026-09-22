@@ -565,10 +565,10 @@ namespace SenangRetails.Shared.ApiClient
                 $"api/InventoryFull/Delete?id={Uri.EscapeDataString(masterAccountId)}");
         }
 
-        public async Task<ApiResponseRoot<List<Models.DTOs.rpt_StockBelowReorderPointDM>>?> GetStockBelowReorderPoint()
+        public async Task<ApiResponseRoot<List<rpt_StockBelowReorderPointDM>>?> GetStockBelowReorderPoint()
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<List<Models.DTOs.rpt_StockBelowReorderPointDM>>>(
+            return await PostAsync<object, ApiResponseRoot<List<rpt_StockBelowReorderPointDM>>>(
                 "api/Inventory/GetStockBelowReorderPoint", new { id = _appState.CurrentBranch?.BranchID });
         }
 
