@@ -396,28 +396,6 @@ namespace SenangRetails.Shared.Models.DTOs
         [JsonPropertyName("isDirty")] public bool isDirty { get; set; } = true;
     }
 
-    public class LowStockItem
-    {
-        [JsonPropertyName("InventoryItemAccountID")] public string InventoryItemAccountID { get; set; } = string.Empty;
-        [JsonPropertyName("DisplayCode")] public string DisplayCode { get; set; } = string.Empty;
-        [JsonPropertyName("ProductCode")] public string ProductCode { get; set; } = string.Empty;
-        [JsonPropertyName("AccountName")] public string AccountName { get; set; } = string.Empty;
-        [JsonPropertyName("ItemGroupName")] public string ItemGroupName { get; set; } = string.Empty;
-        [JsonPropertyName("BrandName")] public string BrandName { get; set; } = string.Empty;
-        [JsonPropertyName("ExistingQuantity")] public decimal ExistingQuantity { get; set; }
-        [JsonPropertyName("StockReorderLevel")] public decimal StockReorderLevel { get; set; }
-        [JsonPropertyName("StockMaxLevel")] public decimal StockMaxLevel { get; set; }
-        [JsonPropertyName("StockPackLevel")] public decimal StockPackLevel { get; set; }
-        [JsonPropertyName("SalesOrderQuantity")] public decimal SalesOrderQuantity { get; set; }
-        [JsonPropertyName("VendorOrderedQuantity")] public decimal VendorOrderedQuantity { get; set; }
-        [JsonPropertyName("ShortFall")] public decimal ShortFall { get; set; }
-        [JsonPropertyName("RecommendedOrderQuantiity")] public decimal RecommendedOrderQuantiity { get; set; }
-        [JsonPropertyName("NeedToOrder")] public decimal NeedToOrder { get; set; }
-        [JsonPropertyName("IsPurchased")] public bool IsPurchased { get; set; }
-        [JsonPropertyName("MasterAccountBranchID")] public string MasterAccountBranchID { get; set; } = string.Empty;
-        [JsonPropertyName("DefaultSupplierID")] public string? DefaultSupplierID { get; set; }
-    }
-
     public class StockBalanceRequest
     {
         [JsonPropertyName("id")] public string? Id { get; set; }
@@ -438,16 +416,4 @@ namespace SenangRetails.Shared.Models.DTOs
         [JsonPropertyName("reason")] public string? Reason { get; set; }
     }
 
-    public class StockBalanceItem
-    {
-        [JsonPropertyName("InventoryID")] public string InventoryID { get; set; } = string.Empty;
-        [JsonPropertyName("BatchNo")] public string? BatchNo { get; set; }
-        [JsonPropertyName("Matrix")] public string? Matrix { get; set; }
-        [JsonPropertyName("ExistingQuantity")] public decimal ExistingQuantity { get; set; }
-        [JsonPropertyName("OrderPendingDelivery")] public decimal OrderPendingDelivery { get; set; }
-        [JsonPropertyName("StockBalanceAfterSalesOrder")] public decimal StockBalanceAfterSalesOrder { get; set; }
-        [JsonPropertyName("UOMConvertedExistingQuantity")] public decimal UOMConvertedExistingQuantity { get; set; }
-        [JsonPropertyName("UOMConvertedOrderPendingDelivery")] public decimal UOMConvertedOrderPendingDelivery { get; set; }
-        [JsonPropertyName("UOMConvertedStockBalanceAfterSalesOrder")] public decimal UOMConvertedStockBalanceAfterSalesOrder { get; set; }
-    }
 }
