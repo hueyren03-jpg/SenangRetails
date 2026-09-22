@@ -64,7 +64,7 @@ namespace SenangRetails.Shared.Services.AuthService
                 _appState.BranchGroupID = u.BranchGroupID;
                 _appState.DefaultWorkingBranchID = u.DefaultWorkingBranchID;
                 _appState.UserEmail = email;
-                _appState.Permissions = u.LstSecurities;
+                _appState.Permissions = u.lstSecurities;
 
                 await _js.InvokeVoidAsync("localStorage.setItem", "available_branches", JsonSerializer.Serialize(branches));
                 await _js.InvokeVoidAsync("localStorage.setItem", "default_working_branch", u.DefaultWorkingBranchID ?? string.Empty);
