@@ -1,3 +1,4 @@
+using EBI.DM;
 using BlazorBootstrap;
 using CsvHelper;
 using SenangRetails.Shared.ApiClient;
@@ -10,6 +11,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace SenangRetails.Shared.Services
@@ -27,7 +29,32 @@ namespace SenangRetails.Shared.Services
 
         public async Task<ApiResponse<List<StaffResponseDTO>>> GetStaffListAsync()
         {
-            return await _staffAC.FetchStaffListAsync();
+            var response = await _staffAC.FetchStaffListAsync();
+            if (response == null)
+            {
+                return new ApiResponse<List<StaffResponseDTO>>
+                {
+                    StatusCode = 500,
+                    Message = "No response from server",
+                    Result = new List<StaffResponseDTO>()
+                };
+            }
+
+            return new ApiResponse<List<StaffResponseDTO>>
+            {
+                Result = (response.Result ?? new List<EmployeeDM>())
+                    .Select(ToStaffResponseDto)
+                    .ToList(),
+                Message = response.Message,
+                IsError = response.IsError,
+                Type = response.Type,
+                Title = response.Title,
+                Status = response.Status,
+                Detail = response.Detail,
+                Instance = response.Instance,
+                Extensions = response.Extensions,
+                StatusCode = response.StatusCode
+            };
         }
 
         public async Task<ApiResponseRoot<string>> CreateStaffAsync(StaffRequestDTO payload)
@@ -38,7 +65,7 @@ namespace SenangRetails.Shared.Services
             payload.CreatedDateTime = DateTime.Now;
             //payload.DateHired = null;
             payload.SaveAction = "Added";
-            return await _staffAC.CreateStaffAsync(payload);
+            return await _staffAC.CreateStaffAsync(ToEmployeeDm(payload));
         }
 
         public async Task<ApiResponseRoot<string>> EditStaffAsync(StaffRequestDTO payload)
@@ -50,7 +77,32 @@ namespace SenangRetails.Shared.Services
             // 2. Set Save Action to "Changed" as requested
             payload.SaveAction = "Changed";
 
-            return await _staffAC.PutStaffAsync(payload);
+            return await _staffAC.PutStaffAsync(ToEmployeeDm(payload));
+        }
+
+        private static readonly JsonSerializerOptions EmployeeJsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        private static EmployeeDM ToEmployeeDm(StaffRequestDTO dto)
+        {
+            var payload = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                JsonSerializer.Serialize(dto)) ?? new Dictionary<string, JsonElement>();
+
+            foreach (var key in payload.Keys.Where(k => string.Equals(k, "saveAction", StringComparison.OrdinalIgnoreCase)).ToList())
+                payload.Remove(key);
+
+            return JsonSerializer.Deserialize<EmployeeDM>(
+                JsonSerializer.Serialize(payload),
+                EmployeeJsonOptions) ?? new EmployeeDM();
+        }
+
+        private static StaffResponseDTO ToStaffResponseDto(EmployeeDM employee)
+        {
+            return JsonSerializer.Deserialize<StaffResponseDTO>(
+                JsonSerializer.Serialize(employee),
+                EmployeeJsonOptions) ?? new StaffResponseDTO();
         }
 
         public async Task<byte[]> ExportStaffToCsvAsync()
