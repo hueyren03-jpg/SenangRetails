@@ -35,10 +35,10 @@ namespace SenangRetails.Shared.Services.InventoryService
         Task<ApiResponseRoot<string>?> DeleteStockGRNAsync(string documentId);
 
         // Goods Issue Note (GIN)
-        Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(GinDocumentDto request);
-        Task<(bool Success, string Message)> UpdateStockGINAsync(GinDocumentDto request);
-        Task<GinDocumentDto?> GetStockGINRecordAsync(string documentId);
-        Task<List<Doc_Stock_GRNDM>?> GetStockGINRecordsAsync(
+        Task<(bool Success, string Message, string? DocumentId)> CreateStockGINAsync(Doc_Stock_GIN request);
+        Task<(bool Success, string Message)> UpdateStockGINAsync(Doc_Stock_GIN request);
+        Task<Doc_Stock_GIN?> GetStockGINRecordAsync(string documentId);
+        Task<List<Doc_Stock_GINDM>?> GetStockGINRecordsAsync(
             string branchId,
             DateTime startDate,
             DateTime endDate,
