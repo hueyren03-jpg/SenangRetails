@@ -72,10 +72,10 @@ namespace SenangRetails.Shared.ApiClient
             return apiResponse?.result ?? new Dictionary<string, GSTTaxCodeDM>();
         }
 
-        public async Task<ApiResponseRoot<List<GstTaxCodeDto>>?> LoadProxyByParentID(string taxTypeID)
+        public async Task<ApiResponseRoot<List<GSTTaxCodeDM>>?> LoadProxyByParentID(string taxTypeID)
         {
             if (!await SetBearerToken()) return null;
-            return await PostAsync<object, ApiResponseRoot<List<GstTaxCodeDto>>>(
+            return await PostAsync<object, ApiResponseRoot<List<GSTTaxCodeDM>>>(
                 "api/GSTTaxCode/LoadProxyByParentID", new { id = taxTypeID });
         }
     }
