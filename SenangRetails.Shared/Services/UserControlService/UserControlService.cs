@@ -1,6 +1,6 @@
+using EBI.DM;
 using SenangRetails.Shared.ApiClient;
 using SenangRetails.Shared.Models.DTOs;
-using SenangRetails.Shared.Models.DTOs.UserControl;
 using SenangRetails.Shared.Models.Entities;
 using System;
 using System.Collections.Generic;
