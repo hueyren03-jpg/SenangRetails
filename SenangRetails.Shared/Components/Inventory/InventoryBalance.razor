@@ -347,7 +347,7 @@ else
                 };
 
                 var balances = await InventoryService.GetStockBalanceByBranchAndByItemAsync(req) 
-                              ?? new Dictionary<string, StockBalanceItem>();
+                              ?? new Dictionary<string, rpt_StockBalanceByBranchByItemsDM>();
 
                 // 3. Map them into the display list
                 balanceItems.Clear();
