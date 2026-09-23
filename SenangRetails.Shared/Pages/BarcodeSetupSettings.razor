@@ -272,7 +272,7 @@
                             <label class="form-label">Quantity Length (Digits) <span class="required">*</span></label>
                             <div class="ps-input-with-action">
                                 <input type="number"
-                                       min="1"
+                                       min="0"
                                        max="10"
                                        class="form-control"
                                        @bind="currentRule.QuantityLength"
@@ -1435,6 +1435,16 @@
         try
         {
             rules = await BarcodeService.GetRulesAsync();
+            if (!string.IsNullOrWhiteSpace(BarcodeService.LastError))
+            {
+                alertMessage = BarcodeService.LastError;
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            alertMessage = $"Failed to load barcode rules: {ex.Message}";
+            isSuccess = false;
         }
         finally
         {
@@ -1529,11 +1539,6 @@
             errorMessage = "Item code length must be at least 1.";
             return;
         }
-        if (!currentRule.IsQuantityFixedAsOne && currentRule.QuantityLength < 1)
-        {
-            errorMessage = "Quantity length must be at least 1, or enable Fixed Quantity As One.";
-            return;
-        }
         if (currentRule.DecimalPlace is < 0 or > 6)
         {
             errorMessage = "Decimal place must be between 0 and 6.";
@@ -1553,7 +1558,7 @@
             }
             else
             {
-                errorMessage = "Failed to save barcode rule.";
+                errorMessage = BarcodeService.LastError ?? "Failed to save barcode rule.";
             }
         }
         catch (Exception ex)
@@ -1576,13 +1581,22 @@
     {
         if (ruleToDelete != null)
         {
-            await BarcodeService.DeleteRuleAsync(ruleToDelete.Prefix);
-            showDeleteModal = false;
-            showModal = false;
-            ruleToDelete = null;
-            alertMessage = "Barcode rule deleted successfully.";
-            isSuccess = true;
-            await LoadRules();
+            var success = await BarcodeService.DeleteRuleAsync(ruleToDelete.Prefix);
+            if (success)
+            {
+                showDeleteModal = false;
+                showModal = false;
+                ruleToDelete = null;
+                alertMessage = "Barcode rule deleted successfully.";
+                isSuccess = true;
+                await LoadRules();
+            }
+            else
+            {
+                alertMessage = BarcodeService.LastError ?? "Failed to delete barcode rule.";
+                isSuccess = false;
+                showDeleteModal = false;
+            }
         }
     }
 
