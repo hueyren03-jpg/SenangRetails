@@ -178,20 +178,14 @@ namespace SenangRetails.Shared.ApiClient
                 throw new ArgumentException("Use the package update operation for package items.", nameof(request));
 
             var hasSkuChanges = model.lstSKU is not null;
-            JsonObject? payload;
-            JsonObject? inventory;
-            if (hasSkuChanges)
-            {
-                payload = await LoadFullPayloadAsync(model.masterAccountID);
-                inventory = payload == null ? null : GetProperty(payload, "objInventory") as JsonObject;
-            }
-            else
-            {
-                inventory = await LoadInventoryPayloadAsync(model.masterAccountID);
-                payload = inventory == null
-                    ? null
-                    : new JsonObject { ["objInventory"] = inventory.DeepClone() };
-            }
+
+            // InventoryFull/Update requires the complete aggregate. Starting from
+            // Inventory/LoadRecord drops root collections and other fields that the
+            // backend needs when it calls usp_Inventory_save.
+            var payload = await LoadFullPayloadAsync(model.masterAccountID);
+            var inventory = payload == null
+                ? null
+                : GetProperty(payload, "objInventory") as JsonObject;
 
             if (payload == null || inventory == null)
                 return null;
@@ -228,20 +222,21 @@ namespace SenangRetails.Shared.ApiClient
                     };
                 }
             }
-            else
-            {
-
-                RemoveCaseVariants(inventory, "lstSKU");
-                RemoveChildCollections(inventory);
-                RemoveCaseVariants(payload, "lstSKU");
-            }
 
             // The documented API property is a string, not a JSON number.
             SetProperty(inventory, "pointToRedeem", JsonValue.Create(model.PointToRedeem?.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-            SetProperty(inventory, "saveAction", JsonValue.Create("Changed"));
+            // EBI.EntityState uses 0 for Changed. InventoryFull/LoadRecord returns
+            // -1 for unchanged records, so promote only the edited parent record.
+            SetProperty(inventory, "saveAction", JsonValue.Create(0));
             SetProperty(inventory, "isDirty", JsonValue.Create(true));
             RemoveSubGroups(inventory);
-            SetProperty(payload, "lstMasterAccount_Branch", JsonSerializer.SerializeToNode(request.lstMasterAccount_Branch));
+            if (request.lstMasterAccount_Branch.Count > 0)
+            {
+                SetProperty(
+                    payload,
+                    "lstMasterAccount_Branch",
+                    JsonSerializer.SerializeToNode(request.lstMasterAccount_Branch));
+            }
 
             // lstSKU is an aggregate child collection. Inventory/Update accepts the parent model
             // but does not persist its SKU rows, so selling units must use InventoryFull/Update.
@@ -376,28 +371,6 @@ namespace SenangRetails.Shared.ApiClient
             return true;
         }
 
-        private async Task<JsonObject?> LoadInventoryPayloadAsync(string? masterAccountId)
-        {
-            if (string.IsNullOrWhiteSpace(masterAccountId))
-                return null;
-
-            if (_fullPayloadCache.TryGetValue(masterAccountId, out var cachedJson) &&
-                JsonNode.Parse(cachedJson) is JsonObject cachedPayload &&
-                GetProperty(cachedPayload, "objInventory") is JsonObject cachedInventory)
-            {
-                return cachedInventory.DeepClone().AsObject();
-            }
-
-            if (!await SetBearerToken())
-                return null;
-
-            var response = await PostAsync<object, ApiResponseRoot<JsonObject>>(
-                "api/Inventory/LoadRecord", new { id = masterAccountId });
-            return response?.statusCode is >= 200 and < 300
-                ? response.result
-                : null;
-        }
-
         private async Task<JsonObject?> LoadFullPayloadAsync(string? masterAccountId)
         {
             if (string.IsNullOrWhiteSpace(masterAccountId))
@@ -449,17 +422,6 @@ namespace SenangRetails.Shared.ApiClient
         {
             foreach (var name in new[] { "subGroup1", "subGroup2", "subGroup3", "subGroup4" })
                 RemoveCaseVariants(inventory, name);
-        }
-
-        private static void RemoveChildCollections(JsonObject inventory)
-        {
-            foreach (var key in inventory
-                .Select(property => property.Key)
-                .Where(key => key.StartsWith("lst", StringComparison.OrdinalIgnoreCase))
-                .ToArray())
-            {
-                inventory.Remove(key);
-            }
         }
 
         /// <summary>
@@ -542,7 +504,8 @@ namespace SenangRetails.Shared.ApiClient
 
             // ItemAppCategory is unrelated to SupportingTable types 55 and 56.
             // Preserve its existing server value without using it as a fallback.
-            SetString(inventory, "saveAction", "Changed");
+            // EBI.EntityState: -1 = unchanged, 0 = changed.
+            SetProperty(inventory, "saveAction", JsonValue.Create(0));
             SetBoolean(inventory, "isDirty", true);
 
             // This operation changes product metadata only. Existing SKU rows returned by
