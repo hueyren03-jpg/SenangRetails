@@ -89,6 +89,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPriceGroupService, PriceGroupService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<ICashDrawerService, CashDrawerService>();
+builder.Services.AddScoped<BarcodeFormatAC>();
 builder.Services.AddScoped<IBarcodeSetupService, BarcodeSetupService>();
 builder.Services.AddScoped<ICommissionSetupService, CommissionSetupService>();
 builder.Services.AddScoped<IMaintainDocumentNumberService, MaintainDocumentNumberService>();
