@@ -6,6 +6,7 @@ namespace SenangRetails.Shared.Services.BarcodeSetupService
 {
     public interface IBarcodeSetupService
     {
+        string? LastError { get; }
         Task<List<BarcodeReadingSetupModel>> GetRulesAsync();
         Task<bool> SaveRuleAsync(BarcodeReadingSetupModel rule, bool isNew);
         Task<bool> DeleteRuleAsync(string prefix);
